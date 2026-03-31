@@ -21,11 +21,13 @@ return new class extends Migration
             $table->enum('shipping_type', ['delivery', 'pickup'])->index();
             $table->decimal('down_payment', 10, 2)->nullable();
             $table->enum('payment_status', ['unpaid', 'dp', 'paid'])->default('unpaid')->index();
-            $table->string('order_status')->default('pending')->index();
+            $table->enum('order_status', ['pending', 'confirmed', 'processing', 'ready', 'on_delivery', 'completed'])
+                ->default('pending')
+                ->index();
             $table->text('description')->nullable();
             $table->timestamps();
             $table->softDeletes();
-            
+
             $table->index(['shipping_date', 'shipping_time']);
         });
     }

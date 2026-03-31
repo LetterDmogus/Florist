@@ -16,16 +16,26 @@ class ItemCategoryController extends Controller
 {
     public function index(Request $request): Response
     {
+        $sortBy = $request->input('sort_by', 'name');
+        $sortDir = $request->input('sort_dir', 'asc');
+
         $categories = ItemCategory::query()
             ->withCount('itemUnits')
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%"))
-            ->orderBy('name')
+            ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
+            ->orderBy($sortBy, $sortDir)
             ->paginate(20)
             ->withQueryString();
 
-        return Inertia::render('ItemCategories/Index', [
+        $categoryOptions = ItemCategory::query()
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return Inertia::render('ItemUnits/Index', [
             'categories' => $categories,
-            'filters' => $request->only('search'),
+            'categoryOptions' => $categoryOptions,
+            'filters' => $request->only('search', 'trashed', 'sort_by', 'sort_dir'),
+            'tab' => 'categories',
         ]);
     }
 
@@ -51,5 +61,21 @@ class ItemCategoryController extends Controller
 
         return redirect()->route('item-categories.index')
             ->with('success', 'Kategori item berhasil dihapus.');
+    }
+
+    public function restore(int $id): RedirectResponse
+    {
+        ItemCategory::withTrashed()->findOrFail($id)->restore();
+
+        return redirect()->route('item-categories.index')
+            ->with('success', 'Kategori item berhasil dipulihkan.');
+    }
+
+    public function forceDelete(int $id): RedirectResponse
+    {
+        ItemCategory::withTrashed()->findOrFail($id)->forceDelete();
+
+        return redirect()->route('item-categories.index')
+            ->with('success', 'Kategori item berhasil dihapus permanen.');
     }
 }

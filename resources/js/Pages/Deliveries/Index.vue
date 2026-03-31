@@ -1,30 +1,314 @@
 <script setup>
+import { computed, ref } from 'vue';
+import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Truck } from 'lucide-vue-next';
+import DataTable from '@/Components/DataTable.vue';
+import Modal from '@/Components/Modal.vue';
+import InputLabel from '@/Components/InputLabel.vue';
+import TextInput from '@/Components/TextInput.vue';
+import InputError from '@/Components/InputError.vue';
+import PrimaryButton from '@/Components/PrimaryButton.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
+import { Plus, Pencil, RotateCcw, Trash2, XCircle } from 'lucide-vue-next';
 
-defineProps({
-    deliveries: Object,
+const props = defineProps({
+    deliveries: {
+        type: Object,
+        required: true,
+    },
+    orderOptions: {
+        type: Array,
+        default: () => [],
+    },
+    filters: {
+        type: Object,
+        default: () => ({}),
+    },
 });
+
+const showModal = ref(false);
+const editingDelivery = ref(null);
+const orderSearch = ref('');
+const selectedDate = ref(props.filters?.date || '');
+
+const columns = [
+    { label: 'Order', key: 'order' },
+    { label: 'Recipient', key: 'recipient_name' },
+    { label: 'Phone', key: 'recipient_phone' },
+    { label: 'Address', key: 'full_address' },
+    { label: 'Schedule', key: 'schedule' },
+];
+
+const form = useForm({
+    order_id: '',
+    recipient_name: '',
+    recipient_phone: '',
+    full_address: '',
+});
+
+const filteredOrders = computed(() => {
+    const search = orderSearch.value.toLowerCase().trim();
+
+    return props.orderOptions.filter((order) => {
+        if (!search) {
+            return true;
+        }
+
+        return String(order.id).includes(search)
+            || (order.customer_name || '').toLowerCase().includes(search)
+            || (order.customer_phone_number || '').toLowerCase().includes(search);
+    });
+});
+
+const selectedOrder = computed(() => {
+    return props.orderOptions.find((order) => String(order.id) === String(form.order_id)) || null;
+});
+
+const resetForm = () => {
+    form.reset();
+    form.clearErrors();
+    orderSearch.value = '';
+};
+
+const openCreateModal = () => {
+    editingDelivery.value = null;
+    resetForm();
+    showModal.value = true;
+};
+
+const openEditModal = (delivery) => {
+    editingDelivery.value = delivery;
+    form.order_id = delivery.order_id;
+    form.recipient_name = delivery.recipient_name;
+    form.recipient_phone = delivery.recipient_phone;
+    form.full_address = delivery.full_address;
+    orderSearch.value = '';
+    form.clearErrors();
+    showModal.value = true;
+};
+
+const closeModal = () => {
+    showModal.value = false;
+    editingDelivery.value = null;
+    resetForm();
+};
+
+const submit = () => {
+    const options = {
+        preserveScroll: true,
+        onSuccess: () => closeModal(),
+    };
+
+    if (editingDelivery.value) {
+        form.put(route('deliveries.update', editingDelivery.value.id), options);
+        return;
+    }
+
+    form.post(route('deliveries.store'), options);
+};
+
+const destroyDelivery = (delivery) => {
+    if (!confirm(`Hapus data delivery untuk order #${delivery.order_id}?`)) {
+        return;
+    }
+
+    router.delete(route('deliveries.destroy', delivery.id), {
+        preserveScroll: true,
+    });
+};
+
+const restoreDelivery = (delivery) => {
+    router.post(route('deliveries.restore', delivery.id), {}, {
+        preserveScroll: true,
+    });
+};
+
+const forceDeleteDelivery = (delivery) => {
+    if (!confirm(`Hapus permanen data delivery #${delivery.id}?`)) {
+        return;
+    }
+
+    router.delete(route('deliveries.force-delete', delivery.id), {
+        preserveScroll: true,
+    });
+};
+
+const applyDateFilter = () => {
+    router.get(route('deliveries.index'), {
+        search: props.filters?.search || '',
+        ...(selectedDate.value ? { date: selectedDate.value } : {}),
+    }, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+    });
+};
+
+const formatSchedule = (delivery) => {
+    const date = delivery.order?.shipping_date || '-';
+    const time = String(delivery.order?.shipping_time || '').split(':').slice(0, 2).join(':');
+
+    return `${date} ${time || ''}`.trim();
+};
 </script>
 
 <template>
     <AppLayout title="Deliveries">
         <template #header>
-            <h2 class="font-semibold text-xl text-foreground leading-tight">
-                Deliveries
-            </h2>
+            <div class="flex items-center justify-between gap-4">
+                <h2 class="font-semibold text-xl text-foreground leading-tight">
+                    Delivery Management
+                </h2>
+                <PrimaryButton class="rounded-xl flex items-center gap-2" @click="openCreateModal">
+                    <Plus class="w-4 h-4" />
+                    New Delivery
+                </PrimaryButton>
+            </div>
         </template>
 
-        <div class="py-12">
+        <div class="py-6">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="bg-white p-12 rounded-3xl border border-secondary shadow-sm text-center">
-                    <div class="w-20 h-20 bg-primary/20 rounded-2xl flex items-center justify-center mx-auto mb-6 text-primary">
-                        <Truck class="w-10 h-10" />
-                    </div>
-                    <h3 class="text-2xl font-bold text-foreground mb-2">Deliveries Page Coming Soon</h3>
-                    <p class="text-muted-foreground">We are working on the delivery management system. Please check back later.</p>
-                </div>
+                <DataTable
+                    :data="deliveries"
+                    :columns="columns"
+                    :filters="filters"
+                    routeName="deliveries.index"
+                    searchPlaceholder="Search recipient / phone / order / customer..."
+                    :additional-params="{ date: selectedDate || '' }"
+                >
+                    <template #extra-filters>
+                        <input
+                            v-model="selectedDate"
+                            type="date"
+                            class="px-3 py-2 text-sm rounded-xl border border-secondary bg-white focus:ring-2 focus:ring-primary/50"
+                            @change="applyDateFilter"
+                        >
+                    </template>
+
+                    <template #cell-order="{ item }">
+                        <div class="space-y-0.5">
+                            <p class="font-semibold text-pink-950">#{{ item.order_id }}</p>
+                            <p class="text-xs text-muted-foreground">{{ item.order?.customer?.name || '-' }}</p>
+                        </div>
+                    </template>
+
+                    <template #cell-full_address="{ item }">
+                        <p class="max-w-sm truncate" :title="item.full_address">{{ item.full_address }}</p>
+                    </template>
+
+                    <template #cell-schedule="{ item }">
+                        <span class="text-xs text-muted-foreground">{{ formatSchedule(item) }}</span>
+                    </template>
+
+                    <template #actions="{ item }">
+                        <template v-if="item.deleted_at">
+                            <button
+                                class="px-3 py-1.5 text-xs rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition"
+                                @click="restoreDelivery(item)"
+                            >
+                                <span class="inline-flex items-center gap-1">
+                                    <RotateCcw class="w-3.5 h-3.5" />
+                                    Restore
+                                </span>
+                            </button>
+                            <button
+                                class="px-3 py-1.5 text-xs rounded-lg bg-red-50 hover:bg-red-100 text-red-700 transition"
+                                @click="forceDeleteDelivery(item)"
+                            >
+                                <span class="inline-flex items-center gap-1">
+                                    <XCircle class="w-3.5 h-3.5" />
+                                    Delete Forever
+                                </span>
+                            </button>
+                        </template>
+                        <template v-else>
+                            <button
+                                class="px-3 py-1.5 text-xs rounded-lg bg-secondary/50 hover:bg-secondary text-foreground transition"
+                                @click="openEditModal(item)"
+                            >
+                                <span class="inline-flex items-center gap-1">
+                                    <Pencil class="w-3.5 h-3.5" />
+                                    Edit
+                                </span>
+                            </button>
+                            <button
+                                class="px-3 py-1.5 text-xs rounded-lg bg-red-50 hover:bg-red-100 text-red-700 transition"
+                                @click="destroyDelivery(item)"
+                            >
+                                <span class="inline-flex items-center gap-1">
+                                    <Trash2 class="w-3.5 h-3.5" />
+                                    Delete
+                                </span>
+                            </button>
+                        </template>
+                    </template>
+                </DataTable>
             </div>
         </div>
+
+        <Modal :show="showModal" @close="closeModal" max-width="2xl">
+            <form class="p-6 space-y-5" @submit.prevent="submit">
+                <h3 class="text-lg font-semibold text-foreground">
+                    {{ editingDelivery ? 'Edit Delivery' : 'Create Delivery' }}
+                </h3>
+
+                <div class="space-y-2">
+                    <InputLabel value="Order" />
+                    <TextInput
+                        v-model="orderSearch"
+                        class="w-full"
+                        placeholder="Cari order id / nama customer / no hp..."
+                    />
+                    <select
+                        v-model="form.order_id"
+                        class="w-full rounded-xl border-secondary focus:border-primary focus:ring-primary/40"
+                    >
+                        <option value="">Pilih order</option>
+                        <option
+                            v-for="order in filteredOrders"
+                            :key="order.id"
+                            :value="order.id"
+                        >
+                            #{{ order.id }} - {{ order.customer_name || '-' }} ({{ order.customer_phone_number || '-' }})
+                        </option>
+                    </select>
+                    <p v-if="selectedOrder" class="text-xs text-muted-foreground">
+                        Jadwal: {{ selectedOrder.shipping_date }} {{ String(selectedOrder.shipping_time || '').split(':').slice(0, 2).join(':') }} • {{ selectedOrder.shipping_type }}
+                    </p>
+                    <InputError :message="form.errors.order_id" />
+                </div>
+
+                <div class="space-y-1">
+                    <InputLabel value="Recipient Name" />
+                    <TextInput v-model="form.recipient_name" class="w-full" />
+                    <InputError :message="form.errors.recipient_name" />
+                </div>
+
+                <div class="space-y-1">
+                    <InputLabel value="Recipient Phone" />
+                    <TextInput v-model="form.recipient_phone" class="w-full" />
+                    <InputError :message="form.errors.recipient_phone" />
+                </div>
+
+                <div class="space-y-1">
+                    <InputLabel value="Full Address" />
+                    <textarea
+                        v-model="form.full_address"
+                        rows="3"
+                        class="w-full rounded-xl border-secondary focus:border-primary focus:ring-primary/40"
+                    />
+                    <InputError :message="form.errors.full_address" />
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2">
+                    <SecondaryButton type="button" @click="closeModal">
+                        Cancel
+                    </SecondaryButton>
+                    <PrimaryButton :disabled="form.processing">
+                        {{ editingDelivery ? 'Update Delivery' : 'Create Delivery' }}
+                    </PrimaryButton>
+                </div>
+            </form>
+        </Modal>
     </AppLayout>
 </template>

@@ -50,6 +50,7 @@ const unitForm = useForm({
     serial_number: '',
     name: '',
     description: '',
+    money_bouquet: '',
     price: '',
     image: null,
     _method: 'POST', // For updates with files
@@ -95,7 +96,8 @@ const openEditModal = (item) => {
         unitForm.serial_number = item.serial_number;
         unitForm.name = item.name;
         unitForm.description = item.description;
-        unitForm.price = item.price;
+        unitForm.money_bouquet = item.money_bouquet ?? item.price;
+        unitForm.price = item.money_bouquet ?? item.price;
         unitForm.image = null;
         unitForm._method = 'PUT';
         imagePreview.value = item.image_url;
@@ -131,6 +133,8 @@ const submitForm = () => {
             });
         }
     } else if (activeTab.value === 'units') {
+        unitForm.price = unitForm.money_bouquet;
+
         if (editingItem.value) {
             // Use post with _method PUT for multipart form updates
             unitForm.post(route('bouquet-units.update', editingItem.value.id), {
@@ -196,7 +200,7 @@ const unitColumns = [
     { label: 'SKU / Serial', key: 'serial_number' },
     { label: 'Name', key: 'name' },
     { label: 'Type', key: 'type' },
-    { label: 'Price', key: 'price' },
+    { label: 'Money Bouquet', key: 'price' },
 ];
 
 // Helper to auto-generate slug
@@ -227,7 +231,7 @@ const generateSlug = () => {
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 
                 <!-- Tab Navigation -->
-                <div class="flex items-center gap-2 mb-6 bg-secondary/30 p-1 rounded-2xl w-fit">
+                <div class="flex items-center gap-2 mb-6 bg-secondary/30 p-1 rounded-2xl w-full overflow-x-auto scrollbar-hide whitespace-nowrap sm:w-fit">
                     <Link 
                         :href="route('bouquet-units.index')"
                         :class="cn(
@@ -280,7 +284,7 @@ const generateSlug = () => {
                             </span>
                         </template>
                         <template #cell-price="{ item }">
-                            Rp {{ new Intl.NumberFormat('id-ID').format(item.price) }}
+                            Rp {{ new Intl.NumberFormat('id-ID').format(item.money_bouquet ?? item.price) }}
                         </template>
                         <template #actions="{ item }">
                             <template v-if="item.deleted_at">
@@ -483,9 +487,9 @@ const generateSlug = () => {
                                 <InputError :message="unitForm.errors.serial_number" class="mt-2" />
                             </div>
                             <div>
-                                <InputLabel for="price" value="Price (IDR)" />
-                                <TextInput id="price" v-model="unitForm.price" type="number" class="mt-1 block w-full" required />
-                                <InputError :message="unitForm.errors.price" class="mt-2" />
+                                <InputLabel for="money_bouquet" value="Money Bouquet (IDR)" />
+                                <TextInput id="money_bouquet" v-model="unitForm.money_bouquet" type="number" class="mt-1 block w-full" required />
+                                <InputError :message="unitForm.errors.money_bouquet || unitForm.errors.price" class="mt-2" />
                             </div>
                         </div>
                         <div>

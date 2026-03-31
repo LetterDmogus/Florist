@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Models\Order;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -11,7 +12,7 @@ class UpdateOrderRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasAnyRole(['super-admin', 'admin', 'kasir']);
+        return $this->user()->hasAnyRole(['super-admin', 'admin']);
     }
 
     public function rules(): array
@@ -22,7 +23,7 @@ class UpdateOrderRequest extends FormRequest
             'shipping_type' => ['sometimes', 'required', Rule::in(['delivery', 'pickup'])],
             'down_payment' => ['nullable', 'numeric', 'min:0'],
             'payment_status' => ['sometimes', 'required', Rule::in(['unpaid', 'dp', 'paid'])],
-            'order_status' => ['sometimes', 'required', 'string', 'max:100'],
+            'order_status' => ['sometimes', 'required', Rule::in(Order::ORDER_STATUSES)],
             'description' => ['nullable', 'string'],
         ];
     }

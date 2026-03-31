@@ -19,13 +19,15 @@ class CustomerController extends Controller
         $customers = Customer::query()
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%")
                 ->orWhere('phone_number', 'like', "%{$request->search}%"))
+            ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
+            ->withCount('orders')
             ->orderByDesc('created_at')
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('Customers/Index', [
             'customers' => $customers,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'trashed'),
         ]);
     }
 
@@ -60,5 +62,21 @@ class CustomerController extends Controller
 
         return redirect()->route('customers.index')
             ->with('success', 'Customer berhasil dihapus.');
+    }
+
+    public function restore(int $id): RedirectResponse
+    {
+        Customer::withTrashed()->findOrFail($id)->restore();
+
+        return redirect()->route('customers.index')
+            ->with('success', 'Customer berhasil dipulihkan.');
+    }
+
+    public function forceDelete(int $id): RedirectResponse
+    {
+        Customer::withTrashed()->findOrFail($id)->forceDelete();
+
+        return redirect()->route('customers.index')
+            ->with('success', 'Customer berhasil dihapus permanen.');
     }
 }

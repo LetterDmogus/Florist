@@ -15,7 +15,7 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 
 class ItemUnit extends Model implements HasMedia
 {
-    use LogsActivity, SoftDeletes, InteractsWithMedia;
+    use InteractsWithMedia, LogsActivity, SoftDeletes;
 
     protected $fillable = [
         'category_id',
@@ -49,7 +49,7 @@ class ItemUnit extends Model implements HasMedia
 
     public function category(): BelongsTo
     {
-        return $this->belongsTo(ItemCategory::class, 'category_id');
+        return $this->belongsTo(ItemCategory::class, 'category_id')->withTrashed();
     }
 
     public function stockMovements(): HasMany

@@ -11,7 +11,8 @@ import {
     BarChart3, 
     Settings, 
     History,
-    ShieldCheck
+    ShieldCheck,
+    UserCog
 } from 'lucide-vue-next';
 
 const page = usePage();
@@ -26,7 +27,7 @@ const hasAnyRole = (roles) => {
 };
 
 const isItemActive = (item) => {
-    if (route().current(item.route + '*') && (item.name !== 'Reports' || route().current('reports.*'))) {
+    if (route().current(item.route + '*')) {
         return true;
     }
     if (item.children) {
@@ -50,6 +51,12 @@ const menuItems = computed(() => {
             show: hasAnyRole(['super-admin', 'admin', 'kasir', 'manager'])
         },
         {
+            name: 'Order Status',
+            icon: History,
+            route: 'orders.status.index',
+            show: hasAnyRole(['super-admin', 'admin'])
+        },
+        {
             name: 'Customers',
             icon: Users,
             route: 'customers.index',
@@ -59,7 +66,11 @@ const menuItems = computed(() => {
             name: 'Inventory',
             icon: Package,
             route: 'item-units.index',
-            show: hasAnyRole(['super-admin', 'admin', 'manager'])
+            show: hasAnyRole(['super-admin', 'admin', 'manager']),
+            children: [
+                { name: 'Inventory Units', route: 'item-units.index' },
+                { name: 'Categories', route: 'item-categories.index' },
+            ]
         },
         {
             name: 'Bouquets',
@@ -87,8 +98,18 @@ const menuItems = computed(() => {
         {
             name: 'Reports',
             icon: BarChart3,
-            route: 'dashboard', // Placeholder
-            show: hasAnyRole(['super-admin', 'admin', 'manager'])
+            route: 'reports.sales.index',
+            show: hasAnyRole(['super-admin', 'admin', 'manager']),
+            children: [
+                { name: 'Laporan Penjualan', route: 'reports.sales.index' },
+                { name: 'Laporan Pembelian', route: 'reports.purchases.index' },
+            ]
+        },
+        {
+            name: 'User Management',
+            icon: UserCog,
+            route: 'users.index',
+            show: hasRole('super-admin')
         },
         {
             name: 'Role Management',
@@ -97,9 +118,15 @@ const menuItems = computed(() => {
             show: hasRole('super-admin')
         },
         {
+            name: 'Activity Log',
+            icon: History,
+            route: 'activities.index',
+            show: hasRole('super-admin')
+        },
+        {
             name: 'Settings',
             icon: Settings,
-            route: 'dashboard', // Placeholder
+            route: 'settings.index',
             show: hasRole('super-admin')
         }
     ];
@@ -109,15 +136,15 @@ const menuItems = computed(() => {
 </script>
 
 <template>
-    <div class="flex flex-col h-full bg-white border-r border-secondary/50 shadow-sm transition-all duration-300 w-64 md:w-72">
+    <div class="flex flex-col h-full bg-gradient-to-b from-[#fff9fd] via-[#fff4fa] to-[#ffeff8] border-r border-pink-200/80 shadow-sm transition-all duration-300 w-64 md:w-72">
         <!-- Logo -->
         <div class="px-6 py-8 flex items-center gap-3">
-            <div class="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center text-primary-foreground border border-primary/30">
-                <Flower2 class="w-6 h-6 text-accent" />
+            <div class="w-10 h-10 bg-pink-200 rounded-xl flex items-center justify-center border border-pink-300/90">
+                <Flower2 class="w-6 h-6 text-pink-700" />
             </div>
             <div>
-                <h1 class="text-xl font-bold tracking-tight text-foreground">Bees Fleur</h1>
-                <p class="text-xs text-muted-foreground uppercase tracking-widest font-semibold">Florist POS</p>
+                <h1 class="text-xl font-bold tracking-tight text-pink-950">Bees Fleur</h1>
+                <p class="text-xs text-pink-700 uppercase tracking-widest font-semibold">Florist POS</p>
             </div>
         </div>
 
@@ -127,13 +154,13 @@ const menuItems = computed(() => {
                 <div>
                     <Link 
                         :href="route(item.route)" 
-                        class="group flex items-center px-4 py-3 text-sm font-medium rounded-2xl transition-all duration-200"
-                        :class="isItemActive(item) ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-secondary hover:text-black'"
+                        class="group flex items-center px-4 py-3 text-sm font-medium rounded-2xl border transition-all duration-200"
+                        :class="isItemActive(item) ? 'bg-pink-600 border-pink-600 text-white shadow-sm' : 'border-transparent text-pink-800 hover:bg-white hover:border-pink-200 hover:text-pink-950 hover:shadow-sm'"
                     >
                         <component 
                             :is="item.icon" 
                             class="mr-3 h-5 w-5 transition-transform duration-200 group-hover:scale-110" 
-                            :class="isItemActive(item) ? 'text-primary-foreground' : 'text-muted-foreground/70 group-hover:text-black'"
+                            :class="isItemActive(item) ? 'text-white' : 'text-pink-700 group-hover:text-pink-900'"
                         />
                         {{ item.name }}
                     </Link>
@@ -145,7 +172,7 @@ const menuItems = computed(() => {
                             :key="child.name"
                             :href="route(child.route)"
                             class="block px-4 py-2 text-xs font-medium rounded-xl transition-all duration-200"
-                            :class="route().current(child.route) ? 'text-primary font-bold bg-primary/5' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'"
+                            :class="route().current(child.route) ? 'text-pink-950 font-bold bg-white border border-pink-200' : 'text-pink-700 hover:text-pink-950 hover:bg-white/90'"
                         >
                             {{ child.name }}
                         </Link>
@@ -155,14 +182,14 @@ const menuItems = computed(() => {
         </nav>
 
         <!-- User Profile (Quick Access) -->
-        <div class="p-4 border-t border-secondary/50 bg-secondary/20">
+        <div class="p-4 border-t border-pink-200/80 bg-pink-100/60">
             <div class="flex items-center gap-3 px-2 py-2">
-                <div class="w-10 h-10 rounded-full bg-primary/30 flex items-center justify-center text-xs font-bold text-accent uppercase">
+                <div class="w-10 h-10 rounded-full bg-pink-300 flex items-center justify-center text-xs font-bold text-pink-900 uppercase">
                     {{ user?.name?.charAt(0) }}
                 </div>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-semibold text-foreground truncate">{{ user?.name }}</p>
-                    <p class="text-xs text-muted-foreground truncate capitalize">
+                    <p class="text-sm font-semibold text-pink-950 truncate">{{ user?.name }}</p>
+                    <p class="text-xs text-pink-700 truncate capitalize">
                         {{ user?.roles?.[0]?.name || 'User' }}
                     </p>
                 </div>
@@ -179,7 +206,7 @@ const menuItems = computed(() => {
     background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: var(--color-secondary);
+    background: rgb(244 114 182 / 35%);
     border-radius: 10px;
 }
 

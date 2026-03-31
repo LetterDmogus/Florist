@@ -16,6 +16,24 @@ class Order extends Model
 {
     use LogsActivity, SoftDeletes;
 
+    public const ORDER_STATUSES = [
+        'pending',
+        'confirmed',
+        'processing',
+        'ready',
+        'on_delivery',
+        'completed',
+    ];
+
+    public const ORDER_STATUS_LABELS = [
+        'pending' => 'Belum diproses',
+        'confirmed' => 'Sudah diproses',
+        'processing' => 'Sedang diproses',
+        'ready' => 'Siap di-pickup',
+        'on_delivery' => 'Sedang diantar',
+        'completed' => 'Selesai (History)',
+    ];
+
     protected $fillable = [
         'user_id',
         'customer_id',

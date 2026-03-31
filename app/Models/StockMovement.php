@@ -13,13 +13,22 @@ class StockMovement extends Model
 {
     use LogsActivity;
 
+    public const TYPE_LABELS = [
+        'in' => 'Pembelian',
+        'out' => 'Pemakaian',
+        'sold' => 'Jual',
+        'damaged' => 'Rusak',
+    ];
+
     protected $fillable = [
         'item_id',
+        'user_id',
         'quantity',
         'price_at_the_time',
         'total',
         'description',
         'type',
+        'order_id',
     ];
 
     protected function casts(): array
@@ -39,5 +48,10 @@ class StockMovement extends Model
     public function item(): BelongsTo
     {
         return $this->belongsTo(ItemUnit::class, 'item_id');
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
     }
 }

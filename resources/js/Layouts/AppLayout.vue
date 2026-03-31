@@ -28,7 +28,7 @@ const logout = () => {
 </script>
 
 <template>
-    <div class="min-h-screen bg-[#FAFAFA] font-sans text-foreground overflow-x-hidden flex">
+    <div class="min-h-screen bg-[#fff8fc] font-sans text-foreground flex">
         <Head :title="title" />
         <Banner />
 
@@ -44,12 +44,12 @@ const logout = () => {
         ></div>
         
         <aside :class="[
-            'fixed inset-y-0 left-0 z-[70] w-72 bg-white transform transition-transform duration-300 ease-in-out md:hidden',
+            'fixed inset-y-0 left-0 z-[70] w-72 bg-[#fff1f7] transform transition-transform duration-300 ease-in-out md:hidden',
             isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         ]">
             <Sidebar />
             <!-- Close button for mobile -->
-            <button @click="isSidebarOpen = false" class="absolute top-4 -right-12 p-2 bg-white rounded-full shadow-lg text-foreground md:hidden">
+            <button @click="isSidebarOpen = false" class="absolute top-4 -right-12 p-2 bg-pink-100 rounded-full shadow-lg text-pink-900 border border-pink-200 md:hidden">
                 <X class="w-6 h-6" />
             </button>
         </aside>
@@ -57,19 +57,19 @@ const logout = () => {
         <!-- Main Content Area -->
         <div class="flex-1 flex flex-col md:pl-72 min-h-screen transition-all duration-300">
             <!-- Top Header -->
-            <header class="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-secondary/50 h-16 flex items-center justify-between px-4 md:px-8">
+            <header class="sticky top-0 z-40 bg-[#fff3f9]/95 backdrop-blur-md border-b border-pink-200/80 h-16 flex items-center justify-between px-4 md:px-8">
                 <div class="flex items-center gap-4">
-                    <button @click="toggleSidebar" class="p-2 -ml-2 rounded-xl text-muted-foreground hover:bg-secondary md:hidden transition-colors">
+                    <button @click="toggleSidebar" class="p-2 -ml-2 rounded-xl text-pink-800 hover:bg-pink-100 md:hidden transition-colors">
                         <Menu class="w-6 h-6" />
                     </button>
-                    <h2 class="text-lg font-semibold text-foreground hidden sm:block">
+                    <h2 class="text-lg font-semibold text-pink-950 hidden sm:block">
                         {{ title }}
                     </h2>
                 </div>
 
                 <div class="flex items-center gap-2 md:gap-4">
                     <!-- Notifications (Placeholder) -->
-                    <button class="p-2 rounded-xl text-muted-foreground hover:bg-secondary hover:text-accent transition-all duration-200">
+                    <button class="p-2 rounded-xl text-pink-700 hover:bg-pink-100 hover:text-pink-900 transition-all duration-200">
                         <Bell class="w-5 h-5" />
                     </button>
 
@@ -77,12 +77,12 @@ const logout = () => {
                     <div class="relative ms-2">
                         <Dropdown align="right" width="48">
                             <template #trigger>
-                                <button v-if="$page.props.jetstream.managesProfilePhotos" class="flex text-sm border-2 border-primary/20 rounded-2xl focus:outline-none focus:border-primary transition p-0.5 hover:scale-105 duration-200">
+                                <button v-if="$page.props.jetstream.managesProfilePhotos" class="flex text-sm border-2 border-pink-200 rounded-2xl focus:outline-none focus:border-pink-400 transition p-0.5 hover:scale-105 duration-200">
                                     <img class="size-9 rounded-[14px] object-cover" :src="$page.props.auth.user.profile_photo_url" :alt="$page.props.auth.user.name">
                                 </button>
-                                <button v-else class="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-secondary/50 text-foreground hover:bg-secondary transition-colors border border-transparent hover:border-primary/20">
+                                <button v-else class="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-pink-100/80 text-pink-900 hover:bg-pink-100 transition-colors border border-pink-200/70">
                                     <span class="text-sm font-medium">{{ $page.props.auth.user.name }}</span>
-                                    <svg class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <svg class="size-4 text-pink-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                                     </svg>
                                 </button>

@@ -17,12 +17,15 @@ class BouquetUnitController extends Controller
 {
     public function index(Request $request): Response
     {
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortDir = $request->input('sort_dir', 'desc');
+
         $units = BouquetUnit::with('type.category')
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%")
                 ->orWhere('serial_number', 'like', "%{$request->search}%"))
             ->when($request->type_id, fn ($q) => $q->where('type_id', $request->type_id))
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
-            ->orderByDesc('created_at')
+            ->orderBy($sortBy, $sortDir)
             ->paginate(20)
             ->withQueryString();
 
@@ -31,7 +34,7 @@ class BouquetUnitController extends Controller
         return Inertia::render('Bouquets/Index', [
             'units' => $units,
             'typeOptions' => $typeOptions,
-            'filters' => $request->only('search', 'type_id', 'trashed'),
+            'filters' => $request->only('search', 'type_id', 'trashed', 'sort_by', 'sort_dir'),
             'tab' => 'units',
         ]);
     }

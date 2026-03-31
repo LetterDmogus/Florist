@@ -16,17 +16,20 @@ class BouquetCategoryController extends Controller
 {
     public function index(Request $request): Response
     {
+        $sortBy = $request->input('sort_by', 'name');
+        $sortDir = $request->input('sort_dir', 'asc');
+
         $categories = BouquetCategory::query()
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%"))
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
             ->withCount('bouquetTypes')
-            ->orderBy('name')
+            ->orderBy($sortBy, $sortDir)
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('Bouquets/Index', [
             'categories' => $categories,
-            'filters' => $request->only('search', 'trashed'),
+            'filters' => $request->only('search', 'trashed', 'sort_by', 'sort_dir'),
             'tab' => 'categories',
         ]);
     }

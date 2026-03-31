@@ -15,7 +15,7 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 
 class BouquetUnit extends Model implements HasMedia
 {
-    use LogsActivity, SoftDeletes, InteractsWithMedia;
+    use InteractsWithMedia, LogsActivity, SoftDeletes;
 
     protected $fillable = [
         'type_id',
@@ -25,7 +25,7 @@ class BouquetUnit extends Model implements HasMedia
         'price',
     ];
 
-    protected $appends = ['image_url'];
+    protected $appends = ['image_url', 'money_bouquet'];
 
     protected function casts(): array
     {
@@ -42,6 +42,11 @@ class BouquetUnit extends Model implements HasMedia
     public function getImageUrlAttribute(): ?string
     {
         return $this->getFirstMediaUrl('images');
+    }
+
+    public function getMoneyBouquetAttribute(): float
+    {
+        return (float) $this->price;
     }
 
     public function type(): BelongsTo

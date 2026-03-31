@@ -25,7 +25,13 @@
         --accent: 340 70% 92%;
         --accent-foreground: 340 20% 15%;
         --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 210 40% 98%;
+        --destructive-foreground: 0 0% 100%;
+        --success: 142 40% 70%; /* Soft Green */
+        --success-foreground: 142 50% 15%;
+        --warning: 30 60% 65%; /* Soft Peach/Orange */
+        --warning-foreground: 30 70% 15%;
+        --info: 210 50% 70%; /* Soft Blue */
+        --info-foreground: 210 60% 15%;
         --border: 340 20% 90%;
         --input: 340 20% 90%;
         --ring: 340 70% 85%;
