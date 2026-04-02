@@ -8,6 +8,7 @@ use App\Http\Requests\StoreDeliveryRequest;
 use App\Http\Requests\UpdateDeliveryRequest;
 use App\Models\Delivery;
 use App\Models\Order;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,8 +19,18 @@ class DeliveryController extends Controller
 {
     public function index(Request $request): Response
     {
-        $deliveries = Delivery::query()
-            ->with(['order.customer'])
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['order_id', 'shipping_date', 'shipping_time', 'recipient_name', 'recipient_phone', 'full_address', 'created_at', 'updated_at'],
+            'created_at',
+            'desc',
+        );
+
+        $deliveriesQuery = Delivery::query()
+            ->with([
+                'order:id,customer_id,shipping_date,shipping_time,shipping_type',
+                'order.customer:id,name,phone_number',
+            ])
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
             ->when($request->search, function ($q) use ($request) {
                 $search = (string) $request->search;
@@ -38,35 +49,108 @@ class DeliveryController extends Controller
                             ->orWhere('phone_number', 'like', "%{$search}%"));
                 });
             })
-            ->when($request->date, fn ($q) => $q->whereHas('order', fn ($o) => $o->whereDate('shipping_date', $request->date)))
-            ->orderByDesc('created_at')
+            ->when($request->date, fn ($q) => $q->whereHas('order', fn ($o) => $o->whereDate('shipping_date', $request->date)));
+
+        if ($sortBy === 'shipping_date') {
+            $deliveriesQuery
+                ->orderBy(
+                    Order::query()
+                        ->select('shipping_date')
+                        ->whereColumn('orders.id', 'deliveries.order_id')
+                        ->limit(1),
+                    $sortDir,
+                )
+                ->orderBy(
+                    Order::query()
+                        ->select('shipping_time')
+                        ->whereColumn('orders.id', 'deliveries.order_id')
+                        ->limit(1),
+                    $sortDir,
+                );
+        } elseif ($sortBy === 'shipping_time') {
+            $deliveriesQuery
+                ->orderBy(
+                    Order::query()
+                        ->select('shipping_time')
+                        ->whereColumn('orders.id', 'deliveries.order_id')
+                        ->limit(1),
+                    $sortDir,
+                )
+                ->orderBy(
+                    Order::query()
+                        ->select('shipping_date')
+                        ->whereColumn('orders.id', 'deliveries.order_id')
+                        ->limit(1),
+                    $sortDir,
+                );
+        } else {
+            $deliveriesQuery->orderBy($sortBy, $sortDir);
+        }
+
+        $deliveries = $deliveriesQuery
             ->paginate(20)
             ->withQueryString();
 
-        $orderOptions = Order::query()
-            ->with('customer')
-            ->orderByDesc('shipping_date')
-            ->orderByDesc('shipping_time')
-            ->limit(300)
-            ->get([
-                'id',
-                'customer_id',
-                'shipping_date',
-                'shipping_time',
-                'shipping_type',
-            ]);
-
         return Inertia::render('Deliveries/Index', [
             'deliveries' => $deliveries,
-            'orderOptions' => $orderOptions->map(fn (Order $order): array => [
+            'orderOptions' => [],
+            'filters' => $request->only('search', 'date', 'trashed', 'sort_by', 'sort_dir'),
+        ]);
+    }
+
+    public function orderLookup(Request $request): JsonResponse
+    {
+        $search = trim((string) $request->string('search')->toString());
+        $limit = max(5, min(10, (int) $request->integer('limit', 8)));
+
+        if ($search === '') {
+            return response()->json([
+                'data' => [],
+            ]);
+        }
+
+        $startsWith = "{$search}%";
+        $contains = "%{$search}%";
+
+        $orders = Order::query()
+            ->select(['id', 'customer_id', 'shipping_date', 'shipping_time', 'shipping_type'])
+            ->with(['customer:id,name,phone_number'])
+            ->where(function ($query) use ($search, $contains): void {
+                if (is_numeric($search)) {
+                    $query->orWhere('id', (int) $search);
+                }
+
+                $query->orWhereHas('customer', function ($customerQuery) use ($contains): void {
+                    $customerQuery
+                        ->where('name', 'like', $contains)
+                        ->orWhere('phone_number', 'like', $contains);
+                });
+            })
+            ->orderByRaw(
+                'CASE
+                    WHEN CAST(id AS CHAR) LIKE ? THEN 0
+                    WHEN id = ? THEN 1
+                    ELSE 2
+                END',
+                [$startsWith, is_numeric($search) ? (int) $search : 0],
+            )
+            ->orderByDesc('shipping_date')
+            ->orderByDesc('shipping_time')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Order $order): array => [
                 'id' => $order->id,
                 'customer_name' => $order->customer?->name,
                 'customer_phone_number' => $order->customer?->phone_number,
                 'shipping_date' => $order->shipping_date?->format('Y-m-d'),
                 'shipping_time' => (string) $order->shipping_time,
                 'shipping_type' => $order->shipping_type,
-            ]),
-            'filters' => $request->only('search', 'date', 'trashed'),
+            ])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'data' => $orders,
         ]);
     }
 

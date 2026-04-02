@@ -29,7 +29,7 @@ const aliasesInput = ref('');
 const customerColumns = [
     { label: 'Name', key: 'name' },
     { label: 'Phone Number', key: 'phone_number' },
-    { label: 'Aliases', key: 'aliases' },
+    { label: 'Aliases', key: 'aliases', sortable: false },
     { label: 'Orders', key: 'orders_count' },
 ];
 

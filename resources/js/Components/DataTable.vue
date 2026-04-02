@@ -92,6 +92,10 @@ const handleSort = (key) => {
     updateFilters();
 };
 
+const resolveColumnSortKey = (column) => {
+    return column.sortKey || column.key;
+};
+
 const goToPage = (url) => {
     if (url) {
         router.get(url, buildQueryParams(), {
@@ -145,13 +149,13 @@ const goToPage = (url) => {
                                 :key="col.key" 
                                 class="px-6 py-4 font-semibold text-muted-foreground whitespace-nowrap"
                                 :class="col.sortable !== false ? 'cursor-pointer select-none hover:text-pink-700' : ''"
-                                @click="col.sortable !== false ? handleSort(col.key) : null"
+                                @click="col.sortable !== false ? handleSort(resolveColumnSortKey(col)) : null"
                             >
                                 <div class="flex items-center gap-2">
                                     {{ col.label }}
                                     <template v-if="col.sortable !== false">
-                                        <ChevronUp v-if="sortBy === col.key && sortDir === 'asc'" class="w-3.5 h-3.5" />
-                                        <ChevronDown v-else-if="sortBy === col.key && sortDir === 'desc'" class="w-3.5 h-3.5" />
+                                        <ChevronUp v-if="sortBy === resolveColumnSortKey(col) && sortDir === 'asc'" class="w-3.5 h-3.5" />
+                                        <ChevronDown v-else-if="sortBy === resolveColumnSortKey(col) && sortDir === 'desc'" class="w-3.5 h-3.5" />
                                         <ArrowUpDown v-else class="w-3.5 h-3.5 opacity-20" />
                                     </template>
                                 </div>

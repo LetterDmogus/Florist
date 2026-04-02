@@ -26,6 +26,13 @@ class RoleController extends Controller
 
     public function index(Request $request): Response
     {
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['name', 'created_at', 'updated_at'],
+            'name',
+            'asc',
+        );
+
         $rolePivotKey = config('permission.column_names.role_pivot_key') ?: 'role_id';
         $modelMorphKey = config('permission.column_names.model_morph_key') ?: 'model_id';
         $modelHasRolesTable = config('permission.table_names.model_has_roles');
@@ -42,7 +49,7 @@ class RoleController extends Controller
             ->with('permissions:id,name')
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%"))
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
-            ->orderBy('name')
+            ->orderBy($sortBy, $sortDir)
             ->paginate(20)
             ->withQueryString()
             ->through(fn (Role $role): array => [
@@ -54,16 +61,41 @@ class RoleController extends Controller
                 'deleted_at' => $role->deleted_at?->toIso8601String(),
             ]);
 
-        $permissions = Permission::query()
-            ->orderBy('name')
-            ->pluck('name')
-            ->values();
-
         return Inertia::render('Roles/Index', [
             'roles' => $roles,
-            'permissions' => $permissions,
-            'filters' => $request->only('search', 'trashed'),
+            'filters' => $request->only('search', 'trashed', 'sort_by', 'sort_dir'),
         ]);
+    }
+
+    public function create(): Response
+    {
+        return Inertia::render('Roles/Form', [
+            'permissions' => $this->getGroupedPermissions(),
+        ]);
+    }
+
+    public function edit(Role $role): Response
+    {
+        return Inertia::render('Roles/Form', [
+            'role' => [
+                'id' => $role->id,
+                'name' => $role->name,
+                'permissions' => $role->permissions->pluck('name')->values(),
+                'is_system' => in_array($role->name, self::SYSTEM_ROLES, true),
+            ],
+            'permissions' => $this->getGroupedPermissions(),
+        ]);
+    }
+
+    private function getGroupedPermissions()
+    {
+        $permissions = Permission::query()
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return $permissions->groupBy(function ($permission) {
+            return explode('.', $permission->name)[0];
+        });
     }
 
     public function store(StoreRoleRequest $request): RedirectResponse

@@ -9,7 +9,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
-import { Plus, Pencil, Trash2, RotateCcw, XCircle } from 'lucide-vue-next';
+import { Plus, Pencil, Trash2, RotateCcw, XCircle, Upload } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
 
 const props = defineProps({
@@ -33,10 +33,15 @@ const props = defineProps({
         type: Object,
         default: () => ({}),
     },
+    importPreview: {
+        type: Object,
+        default: null,
+    },
 });
 
 const activeTab = ref(props.tab || 'units');
 const showModal = ref(false);
+const showImportModal = ref(false);
 const editingItem = ref(null);
 const imagePreview = ref(null);
 const selectedCategory = ref(props.filters.category_id || '');
@@ -51,10 +56,10 @@ const categoryColumns = [
 ];
 
 const unitColumns = [
-    { label: 'Image', key: 'image_url' },
+    { label: 'Image', key: 'image_url', sortable: false },
     { label: 'Serial Number', key: 'serial_number' },
     { label: 'Name', key: 'name' },
-    { label: 'Category', key: 'category' },
+    { label: 'Category', key: 'category', sortKey: 'category_id' },
     { label: 'Price', key: 'price' },
     { label: 'Individual', key: 'individual' },
     { label: 'Stock', key: 'stock' },
@@ -75,6 +80,15 @@ const unitForm = useForm({
     stock: 0,
     image: null,
     _method: 'POST',
+});
+
+const importForm = useForm({
+    category_id: '',
+    file: null,
+});
+
+const importCommitForm = useForm({
+    token: '',
 });
 
 const resetCategoryForm = () => {
@@ -126,6 +140,56 @@ const closeModal = () => {
     editingItem.value = null;
     resetCategoryForm();
     resetUnitForm();
+};
+
+const openImportModal = () => {
+    if (!props.importPreview?.token) {
+        importForm.reset();
+        importForm.clearErrors();
+        importForm.category_id = selectedCategory.value || props.categoryOptions[0]?.id || '';
+        importForm.file = null;
+    }
+    showImportModal.value = true;
+};
+
+const closeImportModal = () => {
+    showImportModal.value = false;
+    importForm.reset();
+    importForm.clearErrors();
+    importCommitForm.reset();
+    importCommitForm.clearErrors();
+};
+
+const onImportFileChange = (event) => {
+    const [file] = event.target.files || [];
+    importForm.file = file ?? null;
+};
+
+const submitImport = () => {
+    importForm.post(route('item-units.import'), {
+        preserveScroll: true,
+        forceFormData: true,
+    });
+};
+
+const commitImport = () => {
+    if (!props.importPreview?.token) {
+        return;
+    }
+
+    importCommitForm.token = props.importPreview.token;
+    importCommitForm.post(route('item-units.import.commit'), {
+        preserveScroll: true,
+        onSuccess: () => closeImportModal(),
+    });
+};
+
+const discardImportPreview = () => {
+    importCommitForm.token = props.importPreview?.token || '';
+    importCommitForm.post(route('item-units.import.discard'), {
+        preserveScroll: true,
+        onSuccess: () => closeImportModal(),
+    });
 };
 
 const submitForm = () => {
@@ -225,6 +289,8 @@ const applyCategoryFilter = () => {
     router.get(route('item-units.index'), {
         search: props.filters.search || '',
         category_id: selectedCategory.value || '',
+        sort_by: props.filters.sort_by || 'created_at',
+        sort_dir: props.filters.sort_dir || 'desc',
         ...(isViewingTrashed.value ? { trashed: 1 } : {}),
     }, {
         preserveState: true,
@@ -232,6 +298,10 @@ const applyCategoryFilter = () => {
         preserveScroll: true,
     });
 };
+
+if (props.importPreview?.token) {
+    showImportModal.value = true;
+}
 </script>
 
 <template>
@@ -242,10 +312,20 @@ const applyCategoryFilter = () => {
                 <h2 class="font-semibold text-xl text-foreground leading-tight">
                     Inventory Management
                 </h2>
-                <PrimaryButton class="rounded-xl flex items-center gap-2" @click="openCreateModal">
-                    <Plus class="w-4 h-4" />
-                    New {{ activeTab === 'categories' ? 'Category' : 'Inventory Unit' }}
-                </PrimaryButton>
+                <div class="flex items-center gap-2">
+                    <SecondaryButton
+                        v-if="activeTab === 'units'"
+                        class="rounded-xl flex items-center gap-2"
+                        @click="openImportModal"
+                    >
+                        <Upload class="w-4 h-4" />
+                        Import Inventory
+                    </SecondaryButton>
+                    <PrimaryButton class="rounded-xl flex items-center gap-2" @click="openCreateModal">
+                        <Plus class="w-4 h-4" />
+                        New {{ activeTab === 'categories' ? 'Category' : 'Inventory Unit' }}
+                    </PrimaryButton>
+                </div>
             </div>
         </template>
 
@@ -425,6 +505,97 @@ const applyCategoryFilter = () => {
                 </div>
             </div>
         </div>
+
+        <Modal :show="showImportModal" @close="closeImportModal" max-width="2xl">
+            <div class="p-6 space-y-5">
+                <h3 class="text-lg font-semibold text-foreground">
+                    Import Inventory Supply
+                </h3>
+
+                <div class="rounded-xl border border-secondary/60 bg-secondary/20 p-3 text-sm text-muted-foreground space-y-1">
+                    <p>File harus berisi kolom: Kode, Name, Harga Jual, Sheets, Size, Sisa.</p>
+                    <p>Mapping otomatis: Size -> Description, Sisa -> Stock.</p>
+                </div>
+
+                <template v-if="props.importPreview?.token">
+                    <div class="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-sm text-emerald-800 space-y-1">
+                        <p class="font-semibold">Preview siap dikonfirmasi</p>
+                        <p>File: {{ props.importPreview.file_name }}</p>
+                        <p>Target Category: {{ props.importPreview.category_name || '-' }}</p>
+                        <p>Total data: {{ props.importPreview.total_rows }}</p>
+                        <p>Estimasi: {{ props.importPreview.estimated_create }} data baru, {{ props.importPreview.estimated_update }} data update.</p>
+                    </div>
+
+                    <div class="max-h-72 overflow-auto rounded-xl border border-secondary/60">
+                        <table class="min-w-full text-xs">
+                            <thead class="bg-secondary/40">
+                                <tr>
+                                    <th class="px-3 py-2 text-left">Serial</th>
+                                    <th class="px-3 py-2 text-left">Name</th>
+                                    <th class="px-3 py-2 text-left">Price</th>
+                                    <th class="px-3 py-2 text-left">Individual</th>
+                                    <th class="px-3 py-2 text-left">Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(row, index) in props.importPreview.sample_rows || []" :key="`preview-row-${index}`" class="border-t border-secondary/40">
+                                    <td class="px-3 py-2 font-medium">{{ row.serial_number }}</td>
+                                    <td class="px-3 py-2">{{ row.name }}</td>
+                                    <td class="px-3 py-2">{{ formatCurrency(row.price) }}</td>
+                                    <td class="px-3 py-2">{{ row.individual }}</td>
+                                    <td class="px-3 py-2">{{ row.stock }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2">
+                        <SecondaryButton type="button" @click="discardImportPreview" :disabled="importCommitForm.processing">
+                            Batal Preview
+                        </SecondaryButton>
+                        <PrimaryButton type="button" @click="commitImport" :disabled="importCommitForm.processing">
+                            {{ importCommitForm.processing ? 'Importing...' : 'Konfirmasi Import' }}
+                        </PrimaryButton>
+                    </div>
+                </template>
+
+                <form v-else class="space-y-5" @submit.prevent="submitImport">
+                    <div class="space-y-1">
+                        <InputLabel value="Target Category" />
+                        <select
+                            v-model="importForm.category_id"
+                            class="w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm"
+                        >
+                            <option disabled value="">Select category</option>
+                            <option v-for="category in categoryOptions" :key="category.id" :value="category.id">
+                                {{ category.name }}
+                            </option>
+                        </select>
+                        <InputError :message="importForm.errors.category_id" />
+                    </div>
+
+                    <div class="space-y-1">
+                        <InputLabel value="Excel File (.xlsx / .xls)" />
+                        <input
+                            type="file"
+                            accept=".xlsx,.xls"
+                            class="w-full text-sm border border-gray-300 rounded-md p-2"
+                            @change="onImportFileChange"
+                        >
+                        <InputError :message="importForm.errors.file" />
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2">
+                        <SecondaryButton type="button" @click="closeImportModal">
+                            Cancel
+                        </SecondaryButton>
+                        <PrimaryButton :disabled="importForm.processing">
+                            {{ importForm.processing ? 'Memproses...' : 'Preview Data' }}
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
 
         <Modal :show="showModal" @close="closeModal" max-width="2xl">
             <form class="p-6 space-y-5" @submit.prevent="submitForm">

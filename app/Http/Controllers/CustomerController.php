@@ -16,18 +16,25 @@ class CustomerController extends Controller
 {
     public function index(Request $request): Response
     {
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['name', 'phone_number', 'orders_count', 'created_at', 'updated_at'],
+            'created_at',
+            'desc',
+        );
+
         $customers = Customer::query()
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%")
                 ->orWhere('phone_number', 'like', "%{$request->search}%"))
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
             ->withCount('orders')
-            ->orderByDesc('created_at')
+            ->orderBy($sortBy === 'orders_count' ? 'orders_count' : $sortBy, $sortDir)
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('Customers/Index', [
             'customers' => $customers,
-            'filters' => $request->only('search', 'trashed'),
+            'filters' => $request->only('search', 'trashed', 'sort_by', 'sort_dir'),
         ]);
     }
 

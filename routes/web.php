@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\BackupController;
 use App\Http\Controllers\BouquetCategoryController;
 use App\Http\Controllers\BouquetTypeController;
 use App\Http\Controllers\BouquetUnitController;
@@ -15,10 +16,10 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StockMovementController;
+use App\Http\Controllers\SystemHealthController;
 use App\Http\Controllers\UserController;
 use App\Models\Customer;
 use App\Models\Order;
-use App\Models\Role;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -81,29 +82,39 @@ Route::middleware([
     })->name('dashboard');
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Kasir & Admin & Super Admin — Customer & Orders
+    // Customer & Orders
     // ─────────────────────────────────────────────────────────────────────────
-    Route::middleware('role:super-admin|admin|kasir')->group(function () {
+    Route::middleware('can:orders.view')->group(function () {
 
         // Customer
-        Route::post('customers/{id}/restore', [CustomerController::class, 'restore'])->name('customers.restore');
-        Route::delete('customers/{id}/force-delete', [CustomerController::class, 'forceDelete'])->name('customers.force-delete');
+        Route::post('customers/{id}/restore', [CustomerController::class, 'restore'])->name('customers.restore')->middleware('can:customers.delete');
+        Route::delete('customers/{id}/force-delete', [CustomerController::class, 'forceDelete'])->name('customers.force-delete')->middleware('can:customers.delete');
         Route::resource('customers', CustomerController::class)
             ->except(['create', 'edit']);
 
         Route::get('orders/status', [OrderController::class, 'statusIndex'])
-            ->middleware('role:super-admin|admin')
+            ->middleware('can:orders.status.view')
             ->name('orders.status.index');
 
         Route::get('orders/{order}/print', [OrderController::class, 'print'])
+            ->middleware('can:orders.print')
             ->name('orders.print');
+
+        Route::get('orders/lookups/customers', [OrderController::class, 'customerLookup'])
+            ->middleware('throttle:lookup-search')
+            ->name('orders.lookups.customers');
+
+        Route::get('orders/lookups/deliveries', [OrderController::class, 'deliveryLookup'])
+            ->middleware('throttle:lookup-search')
+            ->name('orders.lookups.deliveries');
 
         // Orders
         Route::resource('orders', OrderController::class)
             ->except(['edit']);
 
         Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus'])
-            ->middleware('role:super-admin|admin')
+            ->middleware('can:orders.status.update')
+            ->middleware('throttle:order-status-update')
             ->name('orders.status.update');
 
         // Order Details (nested under orders)
@@ -114,7 +125,18 @@ Route::middleware([
 
     });
 
-    Route::middleware('role:super-admin|admin|kasir|manager')->group(function () {
+    Route::middleware('can:deliveries.view')->group(function () {
+        Route::get('deliveries/lookups/orders', [DeliveryController::class, 'orderLookup'])
+            ->middleware('throttle:lookup-search')
+            ->name('deliveries.lookups.orders');
+
+        Route::post('deliveries', [DeliveryController::class, 'store'])
+            ->name('deliveries.store');
+        Route::post('deliveries/{id}/restore', [DeliveryController::class, 'restore'])
+            ->name('deliveries.restore');
+        Route::delete('deliveries/{id}/force-delete', [DeliveryController::class, 'forceDelete'])
+            ->name('deliveries.force-delete');
+
         // Delivery (nested creation from an order)
         Route::post('orders/{order}/delivery', [DeliveryController::class, 'storeFromOrder'])
             ->name('orders.delivery.store');
@@ -125,104 +147,124 @@ Route::middleware([
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Admin & Super Admin — Master Data (Inventory & Bouquet)
+    // Inventory & Bouquet
     // ─────────────────────────────────────────────────────────────────────────
-    Route::middleware('role:super-admin|admin')->group(function () {
+    Route::middleware('can:inventory.view')->group(function () {
 
         // Inventory
-        Route::post('item-categories/{id}/restore', [ItemCategoryController::class, 'restore'])->name('item-categories.restore');
-        Route::delete('item-categories/{id}/force-delete', [ItemCategoryController::class, 'forceDelete'])->name('item-categories.force-delete');
+        Route::post('item-categories/{id}/restore', [ItemCategoryController::class, 'restore'])->name('item-categories.restore')->middleware('can:inventory.manage');
+        Route::delete('item-categories/{id}/force-delete', [ItemCategoryController::class, 'forceDelete'])->name('item-categories.force-delete')->middleware('can:inventory.delete');
         Route::resource('item-categories', ItemCategoryController::class)
             ->except(['create', 'show', 'edit']);
-        Route::post('item-units/{id}/restore', [ItemUnitController::class, 'restore'])->name('item-units.restore');
-        Route::delete('item-units/{id}/force-delete', [ItemUnitController::class, 'forceDelete'])->name('item-units.force-delete');
+
+        Route::post('item-units/import', [ItemUnitController::class, 'importPreview'])
+            ->middleware('throttle:sensitive-write')
+            ->name('item-units.import');
+        Route::post('item-units/import/commit', [ItemUnitController::class, 'importCommit'])
+            ->middleware('throttle:sensitive-write')
+            ->name('item-units.import.commit');
+        Route::post('item-units/import/discard', [ItemUnitController::class, 'importDiscard'])
+            ->middleware('throttle:sensitive-write')
+            ->name('item-units.import.discard');
+        Route::post('item-units/{id}/restore', [ItemUnitController::class, 'restore'])->name('item-units.restore')->middleware('can:inventory.manage');
+        Route::delete('item-units/{id}/force-delete', [ItemUnitController::class, 'forceDelete'])->name('item-units.force-delete')->middleware('can:inventory.delete');
         Route::resource('item-units', ItemUnitController::class)
             ->except(['create', 'edit']);
+    });
 
+    Route::middleware('can:bouquets.view')->group(function () {
         // Bouquet
-        Route::post('bouquet-categories/{id}/restore', [BouquetCategoryController::class, 'restore'])->name('bouquet-categories.restore');
-        Route::delete('bouquet-categories/{id}/force-delete', [BouquetCategoryController::class, 'forceDelete'])->name('bouquet-categories.force-delete');
+        Route::post('bouquet-categories/{id}/restore', [BouquetCategoryController::class, 'restore'])->name('bouquet-categories.restore')->middleware('can:bouquets.manage');
+        Route::delete('bouquet-categories/{id}/force-delete', [BouquetCategoryController::class, 'forceDelete'])->name('bouquet-categories.force-delete')->middleware('can:bouquets.delete');
         Route::resource('bouquet-categories', BouquetCategoryController::class)
             ->except(['create', 'show', 'edit']);
 
-        Route::post('bouquet-types/{id}/restore', [BouquetTypeController::class, 'restore'])->name('bouquet-types.restore');
-        Route::delete('bouquet-types/{id}/force-delete', [BouquetTypeController::class, 'forceDelete'])->name('bouquet-types.force-delete');
+        Route::post('bouquet-types/{id}/restore', [BouquetTypeController::class, 'restore'])->name('bouquet-types.restore')->middleware('can:bouquets.manage');
+        Route::delete('bouquet-types/{id}/force-delete', [BouquetTypeController::class, 'forceDelete'])->name('bouquet-types.force-delete')->middleware('can:bouquets.delete');
         Route::resource('bouquet-types', BouquetTypeController::class)
             ->except(['create', 'show', 'edit']);
 
-        Route::post('bouquet-units/{id}/restore', [BouquetUnitController::class, 'restore'])->name('bouquet-units.restore');
-        Route::delete('bouquet-units/{id}/force-delete', [BouquetUnitController::class, 'forceDelete'])->name('bouquet-units.force-delete');
+        Route::post('bouquet-units/{id}/restore', [BouquetUnitController::class, 'restore'])->name('bouquet-units.restore')->middleware('can:bouquets.manage');
+        Route::delete('bouquet-units/{id}/force-delete', [BouquetUnitController::class, 'forceDelete'])->name('bouquet-units.force-delete')->middleware('can:bouquets.delete');
         Route::resource('bouquet-units', BouquetUnitController::class)
             ->except(['edit']);
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Admin, Manager & Super Admin — Stock Movements & Deliveries list
+    // Stock Movements & Deliveries list
     // ─────────────────────────────────────────────────────────────────────────
-    Route::middleware('role:super-admin|admin|manager')->group(function () {
+    Route::middleware('can:stock.view')->group(function () {
 
-        // Stock Movements (read-only untuk manager)
+        // Stock Movements
         Route::get('stock-movements', [StockMovementController::class, 'index'])
             ->name('stock-movements.index');
 
-        // Deliveries list
-        Route::get('deliveries', [DeliveryController::class, 'index'])
-            ->name('deliveries.index');
-        Route::post('deliveries', [DeliveryController::class, 'store'])
-            ->name('deliveries.store');
-        Route::post('deliveries/{id}/restore', [DeliveryController::class, 'restore'])
-            ->name('deliveries.restore');
-        Route::delete('deliveries/{id}/force-delete', [DeliveryController::class, 'forceDelete'])
-            ->name('deliveries.force-delete');
+        Route::get('stock-movements/lookups/items', [StockMovementController::class, 'itemLookup'])
+            ->middleware('throttle:lookup-search')
+            ->name('stock-movements.lookups.items');
 
-        // Reports
-        Route::get('reports', [ReportController::class, 'index'])
-            ->name('reports.index');
-        Route::get('reports/sales', [ReportController::class, 'salesIndex'])
-            ->name('reports.sales.index');
-        Route::get('reports/sales/export', [ReportController::class, 'exportSales'])
-            ->name('reports.sales.export');
-        Route::get('reports/purchases', [ReportController::class, 'purchasesIndex'])
-            ->name('reports.purchases.index');
-        Route::get('reports/purchases/export', [ReportController::class, 'exportPurchases'])
-            ->name('reports.purchases.export');
+        Route::post('stock-movements', [StockMovementController::class, 'store'])
+            ->name('stock-movements.store')
+            ->middleware('can:stock.manage')
+            ->middleware('throttle:sensitive-write');
     });
 
-    // Stock Movement create — hanya admin & super-admin
-    Route::middleware('role:super-admin|admin')->group(function () {
-        Route::post('stock-movements', [StockMovementController::class, 'store'])
-            ->name('stock-movements.store');
+    Route::get('deliveries', [DeliveryController::class, 'index'])
+        ->name('deliveries.index')
+        ->middleware('can:deliveries.view');
+
+    // Reports
+    Route::middleware('can:reports.view')->group(function () {
+        Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+        Route::get('reports/sales', [ReportController::class, 'salesIndex'])->name('reports.sales.index');
+        Route::get('reports/sales/export', [ReportController::class, 'exportSales'])
+            ->middleware('can:reports.export')
+            ->middleware('throttle:report-export')
+            ->name('reports.sales.export');
+        Route::get('reports/purchases', [ReportController::class, 'purchasesIndex'])->name('reports.purchases.index');
+        Route::get('reports/purchases/export', [ReportController::class, 'exportPurchases'])
+            ->middleware('can:reports.export')
+            ->middleware('throttle:report-export')
+            ->name('reports.purchases.export');
 
         Route::post('reports/entries', [ReportController::class, 'storeEntry'])
-            ->name('reports.entries.store');
-        Route::put('reports/entries/{reportEntry}', [ReportController::class, 'updateEntry'])
-            ->name('reports.entries.update');
-        Route::delete('reports/entries/{reportEntry}', [ReportController::class, 'destroyEntry'])
-            ->name('reports.entries.destroy');
+            ->name('reports.entries.store')
+            ->middleware('can:reports.view')
+            ->middleware('throttle:sensitive-write');
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Super Admin only — Role & Permission management & Settings
+    // System & Settings
     // ─────────────────────────────────────────────────────────────────────────
-    Route::middleware('role:super-admin')->group(function () {
+    Route::middleware('can:settings.manage')->group(function () {
         Route::get('settings', [SettingsController::class, 'index'])->name('settings.index');
         Route::patch('settings', [SettingsController::class, 'update'])->name('settings.update');
+    });
 
-        Route::get('activities', [ActivityLogController::class, 'index'])->name('activities.index');
+    Route::get('activities', [ActivityLogController::class, 'index'])
+        ->name('activities.index')
+        ->middleware('can:logs.view');
 
+    Route::middleware('can:logs.view')->group(function () {
+        Route::get('backups', [BackupController::class, 'index'])->name('backups.index');
+        Route::post('backups', [BackupController::class, 'create'])->name('backups.create');
+        Route::get('backups/download', [BackupController::class, 'download'])->name('backups.download');
+        Route::delete('backups', [BackupController::class, 'destroy'])->name('backups.destroy');
+        Route::get('system/health', SystemHealthController::class)->name('system.health');
+    });
+
+    Route::middleware('can:users.manage')->group(function () {
         Route::post('users/{id}/restore', [UserController::class, 'restore'])->name('users.restore');
         Route::delete('users/{id}/force-delete', [UserController::class, 'forceDelete'])->name('users.force-delete');
-        Route::resource('users', UserController::class)
-            ->except(['create', 'show', 'edit']);
+        Route::resource('users', UserController::class)->except(['create', 'show', 'edit']);
+    });
 
+    Route::middleware('can:roles.manage')->group(function () {
         Route::post('roles/{id}/restore', [RoleController::class, 'restore'])->name('roles.restore');
         Route::delete('roles/{id}/force-delete', [RoleController::class, 'forceDelete'])->name('roles.force-delete');
-        Route::resource('roles', RoleController::class)
-            ->except(['create', 'show', 'edit']);
+        Route::resource('roles', RoleController::class);
 
-        Route::post('roles/{role}/assign-user', [RoleController::class, 'assignUser'])
-            ->name('roles.assign-user');
-        Route::post('roles/{role}/revoke-user', [RoleController::class, 'revokeUser'])
-            ->name('roles.revoke-user');
+        Route::post('roles/{role}/assign-user', [RoleController::class, 'assignUser'])->name('roles.assign-user');
+        Route::post('roles/{role}/revoke-user', [RoleController::class, 'revokeUser'])->name('roles.revoke-user');
     });
 });

@@ -71,6 +71,21 @@ class CreateOrderAction
 
             $this->storeDeliveryIfNeeded($order, $validated);
 
+            activity('orders')
+                ->causedBy($request->user())
+                ->performedOn($order)
+                ->event('created')
+                ->withProperties([
+                    'customer_id' => $customerId,
+                    'shipping_type' => $validated['shipping_type'],
+                    'shipping_date' => $validated['shipping_date'],
+                    'shipping_time' => $validated['shipping_time'],
+                    'details_count' => count($resolvedDetails),
+                    'total' => (float) $total,
+                    'down_payment' => (float) ($validated['down_payment'] ?? 0),
+                ])
+                ->log('order.created');
+
             return $order->load(['orderDetails', 'customer']);
         });
     }

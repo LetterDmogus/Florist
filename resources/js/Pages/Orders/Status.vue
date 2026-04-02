@@ -114,6 +114,8 @@ const filterOrdersByStatus = (status) => {
     router.get(route('orders.status.index'), {
         order_status: status || '',
         search: search.value || '',
+        sort_by: sortBy.value,
+        sort_dir: sortDir.value,
     }, {
         preserveScroll: true,
         preserveState: true,
@@ -126,6 +128,8 @@ const applySearch = () => {
     router.get(route('orders.status.index'), {
         order_status: activeOrderStatus.value || '',
         search: search.value || '',
+        sort_by: sortBy.value,
+        sort_dir: sortDir.value,
     }, {
         preserveScroll: true,
         preserveState: true,
@@ -138,16 +142,11 @@ const getStatusIndex = (status) => {
     return statusValues.value.indexOf(status);
 };
 
-const getPrevStatus = (status) => {
-    const index = getStatusIndex(status);
-    if (index <= 0) {
-        return null;
+const getNextStatus = (status, shippingType = 'pickup') => {
+    if (status === 'ready' && shippingType === 'pickup') {
+        return 'completed';
     }
 
-    return statusValues.value[index - 1] ?? null;
-};
-
-const getNextStatus = (status) => {
     const index = getStatusIndex(status);
     if (index < 0 || index >= statusValues.value.length - 1) {
         return null;
@@ -164,18 +163,8 @@ const isFinalStatus = (status) => {
     return status === getFinalStatus();
 };
 
-const canStepPrev = (status) => {
-    if (isFinalStatus(status)) {
-        return false;
-    }
-
-    return Boolean(getPrevStatus(status));
-};
-
-const stepOrderStatus = (order, direction) => {
-    const status = direction === 'next'
-        ? getNextStatus(order.order_status)
-        : getPrevStatus(order.order_status);
+const stepOrderStatus = (order) => {
+    const status = getNextStatus(order.order_status, order.shipping_type);
 
     if (!status) {
         return;
@@ -195,18 +184,8 @@ const stepOrderStatus = (order, direction) => {
     });
 };
 
-const getPrevStatusLabel = (status) => {
-    if (isFinalStatus(status)) {
-        return 'Status Final';
-    }
-
-    const prev = getPrevStatus(status);
-
-    return prev ? formatOrderStatus(prev) : '';
-};
-
-const getNextStatusLabel = (status) => {
-    const next = getNextStatus(status);
+const getNextStatusLabel = (status, shippingType = 'pickup') => {
+    const next = getNextStatus(status, shippingType);
 
     return next ? formatOrderStatus(next) : '';
 };
@@ -246,6 +225,20 @@ watch(
     () => props.filters?.search,
     (value) => {
         search.value = value ?? '';
+    },
+);
+
+watch(
+    () => props.filters?.sort_by,
+    (value) => {
+        sortBy.value = value ?? 'created_at';
+    },
+);
+
+watch(
+    () => props.filters?.sort_dir,
+    (value) => {
+        sortDir.value = value ?? 'desc';
     },
 );
 
@@ -331,11 +324,11 @@ watch(
                                         <ArrowUpDown v-else class="w-3 h-3 opacity-20" />
                                     </div>
                                 </th>
-                                <th class="px-3 py-2 cursor-pointer select-none hover:text-pink-800" @click="handleSort('created_at')">
+                                <th class="px-3 py-2 cursor-pointer select-none hover:text-pink-800" @click="handleSort('shipping_date')">
                                     <div class="flex items-center gap-1">
                                         Tanggal
-                                        <ChevronUp v-if="sortBy === 'created_at' && sortDir === 'asc'" class="w-3 h-3" />
-                                        <ChevronDown v-else-if="sortBy === 'created_at' && sortDir === 'desc'" class="w-3 h-3" />
+                                        <ChevronUp v-if="sortBy === 'shipping_date' && sortDir === 'asc'" class="w-3 h-3" />
+                                        <ChevronDown v-else-if="sortBy === 'shipping_date' && sortDir === 'desc'" class="w-3 h-3" />
                                         <ArrowUpDown v-else class="w-3 h-3 opacity-20" />
                                     </div>
                                 </th>
@@ -389,19 +382,11 @@ watch(
                                     <div class="flex items-center gap-2">
                                         <button
                                             type="button"
-                                            class="rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-xs font-semibold text-pink-700 transition hover:bg-pink-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                            :disabled="updatingOrderId === order.id || !canStepPrev(order.order_status)"
-                                            @click="stepOrderStatus(order, 'prev')"
-                                        >
-                                            {{ updatingOrderId === order.id ? 'Saving...' : getPrevStatusLabel(order.order_status) }}
-                                        </button>
-                                        <button
-                                            type="button"
                                             class="rounded-lg bg-pink-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                            :disabled="updatingOrderId === order.id || !getNextStatus(order.order_status)"
-                                            @click="stepOrderStatus(order, 'next')"
+                                            :disabled="updatingOrderId === order.id || !getNextStatus(order.order_status, order.shipping_type)"
+                                            @click="stepOrderStatus(order)"
                                         >
-                                            {{ updatingOrderId === order.id ? 'Saving...' : getNextStatusLabel(order.order_status) }}
+                                            {{ updatingOrderId === order.id ? 'Saving...' : getNextStatusLabel(order.order_status, order.shipping_type) }}
                                         </button>
                                     </div>
                                 </td>

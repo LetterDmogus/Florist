@@ -24,6 +24,7 @@ class CreateStockMovementAction
             $item = ItemUnit::query()
                 ->lockForUpdate()
                 ->findOrFail($validated['item_id']);
+            $stockBefore = (int) $item->stock;
 
             $quantity = (int) $validated['quantity'];
             $type = (string) $validated['type'];
@@ -58,6 +59,27 @@ class CreateStockMovementAction
                 'in' => $item->increment('stock', $quantity),
                 'out', 'damaged', 'sold' => $item->decrement('stock', $quantity),
             };
+
+            $stockAfter = match ($type) {
+                'in' => $stockBefore + $quantity,
+                default => $stockBefore - $quantity,
+            };
+
+            activity('inventory')
+                ->causedBy($request->user())
+                ->performedOn($movement)
+                ->event('stock_movement_created')
+                ->withProperties([
+                    'item_id' => $item->id,
+                    'movement_type' => $type,
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'total' => $total,
+                    'stock_before' => $stockBefore,
+                    'stock_after' => $stockAfter,
+                    'generated_order_id' => $order?->id,
+                ])
+                ->log('stock_movement.created');
 
             return [
                 'movement' => $movement->load(['item', 'order.customer']),

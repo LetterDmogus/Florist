@@ -35,7 +35,7 @@ const isViewingTrashed = computed(() => parseTruthy(props.filters.trashed));
 const userColumns = [
     { label: 'Name', key: 'name' },
     { label: 'Email', key: 'email' },
-    { label: 'Role', key: 'primary_role' },
+    { label: 'Role', key: 'primary_role', sortable: false },
     { label: 'Created At', key: 'created_at' },
 ];
 
@@ -126,6 +126,8 @@ const applyRoleFilter = () => {
     router.get(route('users.index'), {
         search: props.filters.search || '',
         role: roleFilter.value || '',
+        sort_by: props.filters.sort_by || 'name',
+        sort_dir: props.filters.sort_dir || 'asc',
         ...(isViewingTrashed.value ? { trashed: 1 } : {}),
     }, {
         preserveState: true,

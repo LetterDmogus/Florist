@@ -35,6 +35,7 @@ class ReportController extends Controller
         $data = $this->collectMonthlyData($start, $end);
 
         return Inertia::render('Reports/Sales', [
+            'activeTab' => 'sales',
             'filters' => [
                 'month' => $month,
                 'year' => $year,
@@ -53,6 +54,7 @@ class ReportController extends Controller
         $data = $this->collectMonthlyData($start, $end);
 
         return Inertia::render('Reports/Purchases', [
+            'activeTab' => 'purchases',
             'filters' => [
                 'month' => $month,
                 'year' => $year,
@@ -89,30 +91,61 @@ class ReportController extends Controller
         ]);
     }
 
-    public function exportSales(Request $request): BinaryFileResponse
+    public function exportSales(Request $request): BinaryFileResponse|RedirectResponse
     {
         [$year, $month, $start, $end] = $this->resolvePeriod($request);
         $data = $this->collectMonthlyData($start, $end);
 
         $filename = sprintf('laporan-penjualan-%04d-%02d.xlsx', $year, $month);
-
-        return Excel::download(new SalesReportExport(
+        $export = new SalesReportExport(
             salesSummary: $data['salesSummary'],
             salesRows: $data['salesRows']->values()->all(),
             profitSummary: $data['profitSummary'],
             month: $month,
             year: $year,
-        ), $filename);
+        );
+
+        if ($request->boolean('queued')) {
+            $path = "exports/{$filename}";
+            Excel::queue($export, $path, 'local');
+
+            activity('reports')
+                ->causedBy($request->user())
+                ->event('sales_export_queued')
+                ->withProperties([
+                    'year' => $year,
+                    'month' => $month,
+                    'rows' => count($data['salesRows']),
+                    'filename' => $filename,
+                    'path' => $path,
+                ])
+                ->log('report.sales_export_queued');
+
+            return redirect()->back()
+                ->with('success', "Export penjualan dimasukkan ke antrian. File: {$path}");
+        }
+
+        activity('reports')
+            ->causedBy($request->user())
+            ->event('sales_exported')
+            ->withProperties([
+                'year' => $year,
+                'month' => $month,
+                'rows' => count($data['salesRows']),
+                'filename' => $filename,
+            ])
+            ->log('report.sales_exported');
+
+        return Excel::download($export, $filename);
     }
 
-    public function exportPurchases(Request $request): BinaryFileResponse
+    public function exportPurchases(Request $request): BinaryFileResponse|RedirectResponse
     {
         [$year, $month, $start, $end] = $this->resolvePeriod($request);
         $data = $this->collectMonthlyData($start, $end);
 
         $filename = sprintf('laporan-pembelian-%04d-%02d.xlsx', $year, $month);
-
-        return Excel::download(new PurchaseReportExport(
+        $export = new PurchaseReportExport(
             purchaseSummary: $data['purchaseSummary'],
             purchaseRows: $data['purchaseRows']->values()->all(),
             supplyPurchaseRows: $data['supplyPurchaseRows']->values()->all(),
@@ -122,7 +155,40 @@ class ReportController extends Controller
             refundRows: $data['refundRows']->values()->all(),
             month: $month,
             year: $year,
-        ), $filename);
+        );
+
+        if ($request->boolean('queued')) {
+            $path = "exports/{$filename}";
+            Excel::queue($export, $path, 'local');
+
+            activity('reports')
+                ->causedBy($request->user())
+                ->event('purchases_export_queued')
+                ->withProperties([
+                    'year' => $year,
+                    'month' => $month,
+                    'rows' => count($data['purchaseRows']),
+                    'filename' => $filename,
+                    'path' => $path,
+                ])
+                ->log('report.purchases_export_queued');
+
+            return redirect()->back()
+                ->with('success', "Export pembelian dimasukkan ke antrian. File: {$path}");
+        }
+
+        activity('reports')
+            ->causedBy($request->user())
+            ->event('purchases_exported')
+            ->withProperties([
+                'year' => $year,
+                'month' => $month,
+                'rows' => count($data['purchaseRows']),
+                'filename' => $filename,
+            ])
+            ->log('report.purchases_exported');
+
+        return Excel::download($export, $filename);
     }
 
     public function storeEntry(StoreReportEntryRequest $request): RedirectResponse

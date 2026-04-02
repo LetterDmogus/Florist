@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class StockMovementWorkflowTest extends TestCase
@@ -134,6 +135,19 @@ class StockMovementWorkflowTest extends TestCase
             'name' => $roleName,
             'guard_name' => 'web',
         ]);
+
+        $permissions = match ($roleName) {
+            'admin' => ['stock.view', 'stock.manage'],
+            default => [],
+        };
+
+        foreach ($permissions as $permissionName) {
+            Permission::findOrCreate($permissionName, 'web');
+        }
+
+        if (! empty($permissions)) {
+            $role->syncPermissions($permissions);
+        }
 
         $user->assignRole($role);
     }

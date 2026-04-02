@@ -15,6 +15,7 @@ use App\Models\ItemUnit;
 use App\Models\Order;
 use App\Models\OrderDetail;
 use App\Models\SiteSetting;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -47,8 +48,12 @@ class OrderController extends Controller
 
     public function index(Request $request): Response
     {
-        $sortBy = $request->input('sort_by', 'created_at');
-        $sortDir = $request->input('sort_dir', 'desc');
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['id', 'customer_id', 'total', 'shipping_date', 'shipping_time', 'shipping_type', 'payment_status', 'order_status', 'created_at', 'updated_at'],
+            'created_at',
+            'desc',
+        );
 
         $orders = Order::with([
             'customer',
@@ -80,8 +85,12 @@ class OrderController extends Controller
 
         $orderStatusFilter = $this->normalizeOrderStatusFilter((string) $request->string('order_status')->toString());
         $search = trim((string) $request->string('search')->toString());
-        $sortBy = $request->input('sort_by', 'created_at');
-        $sortDir = $request->input('sort_dir', 'desc');
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['id', 'customer_id', 'total', 'shipping_date', 'shipping_time', 'shipping_type', 'payment_status', 'order_status', 'created_at', 'updated_at'],
+            'created_at',
+            'desc',
+        );
 
         $orders = Order::with([
             'customer',
@@ -126,8 +135,92 @@ class OrderController extends Controller
         return $this->index($request);
     }
 
+    public function customerLookup(Request $request): JsonResponse
+    {
+        $search = trim((string) $request->string('search')->toString());
+        $limit = max(5, min(10, (int) $request->integer('limit', 8)));
+
+        if ($search === '') {
+            return response()->json([
+                'data' => [],
+            ]);
+        }
+
+        $startsWith = "{$search}%";
+        $contains = "%{$search}%";
+
+        $customers = Customer::query()
+            ->select(['id', 'name', 'phone_number'])
+            ->withCount(['orders', 'orderDetails'])
+            ->withSum('orderDetails as order_items_count', 'quantity')
+            ->where(function ($query) use ($contains): void {
+                $query
+                    ->where('name', 'like', $contains)
+                    ->orWhere('phone_number', 'like', $contains);
+            })
+            ->orderByRaw(
+                'CASE
+                    WHEN phone_number LIKE ? THEN 0
+                    WHEN name LIKE ? THEN 1
+                    WHEN name LIKE ? THEN 2
+                    ELSE 3
+                END',
+                [$startsWith, $startsWith, $contains],
+            )
+            ->orderBy('name')
+            ->limit($limit)
+            ->get();
+
+        return response()->json([
+            'data' => $customers,
+        ]);
+    }
+
+    public function deliveryLookup(Request $request): JsonResponse
+    {
+        $search = trim((string) $request->string('search')->toString());
+        $limit = max(5, min(10, (int) $request->integer('limit', 8)));
+
+        if ($search === '') {
+            return response()->json([
+                'data' => [],
+            ]);
+        }
+
+        $startsWith = "{$search}%";
+        $contains = "%{$search}%";
+
+        $deliveries = Delivery::query()
+            ->select(['id', 'recipient_name', 'recipient_phone', 'full_address'])
+            ->where(function ($query) use ($contains): void {
+                $query
+                    ->where('recipient_name', 'like', $contains)
+                    ->orWhere('recipient_phone', 'like', $contains)
+                    ->orWhere('full_address', 'like', $contains);
+            })
+            ->orderByRaw(
+                'CASE
+                    WHEN recipient_phone LIKE ? THEN 0
+                    WHEN recipient_name LIKE ? THEN 1
+                    WHEN recipient_name LIKE ? THEN 2
+                    WHEN full_address LIKE ? THEN 3
+                    ELSE 4
+                END',
+                [$startsWith, $startsWith, $contains, $startsWith],
+            )
+            ->orderByDesc('created_at')
+            ->limit($limit)
+            ->get();
+
+        return response()->json([
+            'data' => $deliveries,
+        ]);
+    }
+
     public function store(StoreOrderRequest $request, CreateOrderAction $action): RedirectResponse
     {
+        abort_unless($request->user()?->can('orders.create'), 403);
+
         $order = $action->handle($request);
 
         return redirect()->route('orders.show', $order)
@@ -152,14 +245,18 @@ class OrderController extends Controller
 
     public function update(UpdateOrderRequest $request, Order $order): RedirectResponse
     {
+        abort_unless($request->user()?->can('orders.create'), 403);
+
         $order->update($request->validated());
 
         return redirect()->route('orders.show', $order)
             ->with('success', 'Order berhasil diperbarui.');
     }
 
-    public function destroy(Order $order): RedirectResponse
+    public function destroy(Request $request, Order $order): RedirectResponse
     {
+        abort_unless($request->user()?->can('orders.delete'), 403);
+
         $order->delete();
 
         return redirect()->route('orders.index')
@@ -174,26 +271,77 @@ class OrderController extends Controller
             'order_status' => ['required', Rule::in(Order::ORDER_STATUSES)],
         ]);
 
-        $finalStatus = Order::ORDER_STATUSES[array_key_last(Order::ORDER_STATUSES)];
-        if ($order->order_status === $finalStatus && $validated['order_status'] !== $finalStatus) {
+        $targetStatus = (string) $validated['order_status'];
+        $result = DB::transaction(function () use ($order, $targetStatus, $request): array {
+            $lockedOrder = Order::query()
+                ->whereKey($order->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $currentStatus = (string) $lockedOrder->order_status;
+            $shippingType = (string) $lockedOrder->shipping_type;
+
+            if (! Order::canTransition($currentStatus, $targetStatus, $shippingType)) {
+                $allowedNext = Order::allowedNextStatuses($currentStatus, $shippingType);
+                $allowedLabels = collect($allowedNext)
+                    ->map(fn (string $status): string => Order::ORDER_STATUS_LABELS[$status] ?? Str::headline($status))
+                    ->values()
+                    ->all();
+
+                return [
+                    'ok' => false,
+                    'allowed_labels' => $allowedLabels,
+                ];
+            }
+
+            if ($currentStatus === $targetStatus) {
+                return [
+                    'ok' => true,
+                    'changed' => false,
+                ];
+            }
+
+            $lockedOrder->update([
+                'order_status' => $targetStatus,
+            ]);
+
+            activity('orders')
+                ->causedBy($request->user())
+                ->performedOn($lockedOrder)
+                ->event('status_updated')
+                ->withProperties([
+                    'old_status' => $currentStatus,
+                    'new_status' => $targetStatus,
+                    'shipping_type' => $shippingType,
+                ])
+                ->log('order.status_updated');
+
+            return [
+                'ok' => true,
+                'changed' => true,
+            ];
+        });
+
+        if (! ($result['ok'] ?? false)) {
+            $allowed = $result['allowed_labels'] ?? [];
+            $allowedText = empty($allowed) ? 'Tidak ada transisi lanjutan.' : implode(' atau ', $allowed);
+
             return redirect()->back()
                 ->withErrors([
-                    'order_status' => 'Order yang sudah di status terakhir tidak bisa dimundurkan lagi.',
+                    'order_status' => "Transisi status tidak valid. Lanjutkan sesuai urutan: {$allowedText}",
                 ]);
         }
 
-        $order->update([
-            'order_status' => $validated['order_status'],
-        ]);
-
         return redirect()->back()
-            ->with('success', 'Status order berhasil diperbarui.');
+            ->with('success', ($result['changed'] ?? false) ? 'Status order berhasil diperbarui.' : 'Status order tidak berubah.');
     }
 
     // ─── Order Detail Methods ─────────────────────────────────────────────────
 
     public function storeDetail(Request $request, Order $order): RedirectResponse
     {
+        abort_unless($request->user()?->can('orders.create'), 403);
+
         $validated = $request->validate([
             'item_type' => ['required', 'in:bouquet,inventory_item'],
             'quantity' => ['required', 'integer', 'min:1'],
@@ -222,8 +370,10 @@ class OrderController extends Controller
             ->with('success', 'Item berhasil ditambahkan ke order.');
     }
 
-    public function destroyDetail(Order $order, OrderDetail $orderDetail): RedirectResponse
+    public function destroyDetail(Request $request, Order $order, OrderDetail $orderDetail): RedirectResponse
     {
+        abort_unless($request->user()?->can('orders.delete'), 403);
+
         DB::transaction(function () use ($order, $orderDetail): void {
             $orderDetail->delete();
 
@@ -253,23 +403,46 @@ class OrderController extends Controller
 
     private function cashierPayload(Request $request): array
     {
+        $catalogSearch = trim((string) $request->string('catalog_search')->toString());
+        $catalogCategoryId = trim((string) $request->string('catalog_category_id')->toString());
+
+        if ($catalogCategoryId !== '' && ! ctype_digit($catalogCategoryId)) {
+            $catalogCategoryId = '';
+        }
+
+        $bouquetUnits = BouquetUnit::query()
+            ->with('type.category')
+            ->when($catalogSearch !== '', function ($query) use ($catalogSearch): void {
+                $query->where(function ($builder) use ($catalogSearch): void {
+                    $builder
+                        ->where('name', 'like', "%{$catalogSearch}%")
+                        ->orWhere('serial_number', 'like', "%{$catalogSearch}%")
+                        ->orWhereHas('type', function ($typeQuery) use ($catalogSearch): void {
+                            $typeQuery
+                                ->where('name', 'like', "%{$catalogSearch}%")
+                                ->orWhereHas('category', fn ($categoryQuery) => $categoryQuery->where('name', 'like', "%{$catalogSearch}%"));
+                        });
+                });
+            })
+            ->when(
+                $catalogCategoryId !== '',
+                fn ($query) => $query->whereHas('type', fn ($typeQuery) => $typeQuery->where('category_id', (int) $catalogCategoryId))
+            )
+            ->orderBy('name')
+            ->paginate(12, ['*'], 'catalog_page')
+            ->withQueryString();
+
         return [
-            'customers' => Customer::query()
-                ->withCount(['orders', 'orderDetails'])
-                ->withSum('orderDetails as order_items_count', 'quantity')
-                ->orderBy('name')
-                ->get(['id', 'name', 'phone_number']),
-            'bouquetUnits' => BouquetUnit::query()
-                ->with('type.category')
-                ->orderBy('name')
-                ->get(),
+            'customers' => [],
+            'bouquetUnits' => $bouquetUnits,
             'bouquetCategories' => BouquetCategory::query()
                 ->orderBy('name')
                 ->get(['id', 'name']),
-            'deliveryReferences' => Delivery::query()
-                ->orderByDesc('created_at')
-                ->limit(200)
-                ->get(['id', 'recipient_name', 'recipient_phone', 'full_address']),
+            'catalogFilters' => [
+                'search' => $catalogSearch,
+                'category_id' => $catalogCategoryId,
+            ],
+            'deliveryReferences' => [],
             'canCustomBouquet' => (bool) $request->user()?->can('input custom bouquet'),
         ];
     }

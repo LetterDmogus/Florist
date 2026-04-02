@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -27,6 +27,10 @@ const props = defineProps({
     profitSummary: {
         type: Object,
         required: true,
+    },
+    activeTab: {
+        type: String,
+        default: 'sales',
     },
 });
 
@@ -68,7 +72,7 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', {
         <template #header>
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <h2 class="font-semibold text-xl text-foreground leading-tight">
-                    Laporan Penjualan
+                    Laporan Keuangan
                 </h2>
                 <div class="flex items-center gap-2">
                     <select
@@ -99,6 +103,29 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', {
 
         <div class="py-6">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+                
+                <!-- Tab Navigation -->
+                <div class="flex items-center gap-2 mb-6 bg-secondary/30 p-1 rounded-2xl w-fit">
+                    <Link 
+                        :href="route('reports.sales.index')"
+                        :class="[
+                            'px-6 py-2.5 rounded-xl text-sm font-medium transition-all',
+                            activeTab === 'sales' ? 'bg-white shadow-sm text-pink-600' : 'text-muted-foreground hover:text-foreground'
+                        ]"
+                    >
+                        Laporan Penjualan
+                    </Link>
+                    <Link 
+                        :href="route('reports.purchases.index')"
+                        :class="[
+                            'px-6 py-2.5 rounded-xl text-sm font-medium transition-all',
+                            activeTab === 'purchases' ? 'bg-white shadow-sm text-pink-600' : 'text-muted-foreground hover:text-foreground'
+                        ]"
+                    >
+                        Laporan Pembelian
+                    </Link>
+                </div>
+
                 <section class="rounded-2xl border border-pink-100 bg-white p-5">
                     <h3 class="font-semibold text-pink-900 mb-3">Pencatatan - {{ monthLabel }} {{ selectedYear }}</h3>
                     <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">

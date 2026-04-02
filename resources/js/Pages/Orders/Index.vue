@@ -2,22 +2,27 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import BaseButton from '@/Components/BaseButton.vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
+import axios from 'axios';
 import { computed, ref, watch } from 'vue';
 import { ShoppingBag, ShoppingCart, Trash2, WandSparkles } from 'lucide-vue-next';
 
 const props = defineProps({
     customers: {
         type: Array,
-        required: true,
+        default: () => [],
     },
     bouquetUnits: {
-        type: Array,
+        type: Object,
         required: true,
     },
     bouquetCategories: {
         type: Array,
         required: true,
+    },
+    catalogFilters: {
+        type: Object,
+        default: () => ({}),
     },
     deliveryReferences: {
         type: Array,
@@ -31,16 +36,23 @@ const props = defineProps({
 
 const today = new Date().toISOString().slice(0, 10);
 const nowTime = new Date().toTimeString().slice(0, 5);
+const LOOKUP_LIMIT = 8;
 
 const catalogMode = ref('catalog');
-const catalogSearch = ref('');
-const selectedCategoryId = ref('');
+const catalogSearch = ref(props.catalogFilters?.search || '');
+const selectedCategoryId = ref(props.catalogFilters?.category_id || '');
 const cartItems = ref([]);
 const customFormError = ref('');
 const customerMode = ref('existing');
 const customerSearch = ref('');
+const customerOptions = ref(props.customers || []);
+const customerLookupLoading = ref(false);
+const selectedCustomerSnapshot = ref(null);
 const deliveryMode = ref('new');
 const deliverySearch = ref('');
+const deliveryOptions = ref(props.deliveryReferences || []);
+const deliveryLookupLoading = ref(false);
+const selectedDeliverySnapshot = ref(null);
 
 const customDraft = ref({
     custom_category_id: '',
@@ -88,55 +100,35 @@ const formatCurrency = (value) => {
     }).format(amount);
 };
 
-const filteredBouquets = computed(() => {
-    const search = catalogSearch.value.toLowerCase().trim();
+const debounce = (fn, delay = 300) => {
+    let timeoutId;
 
-    return props.bouquetUnits.filter((unit) => {
-        const matchesSearch = !search
-            || unit.name?.toLowerCase().includes(search)
-            || unit.serial_number?.toLowerCase().includes(search)
-            || unit.type?.name?.toLowerCase().includes(search);
+    return (...args) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => fn(...args), delay);
+    };
+};
 
-        const matchesCategory = !selectedCategoryId.value
-            || String(unit.type?.category?.id) === String(selectedCategoryId.value);
-
-        return matchesSearch && matchesCategory;
-    });
-});
-
-const filteredCustomers = computed(() => {
-    const search = customerSearch.value.toLowerCase().trim();
-
-    return props.customers.filter((customer) => {
-        if (!search) {
-            return true;
-        }
-
-        return customer.name?.toLowerCase().includes(search)
-            || customer.phone_number?.toLowerCase().includes(search);
-    });
-});
+const catalogBouquets = computed(() => props.bouquetUnits?.data || []);
 
 const selectedCustomer = computed(() => {
-    return props.customers.find((customer) => String(customer.id) === String(form.customer_id)) ?? null;
-});
+    if (!form.customer_id) {
+        return null;
+    }
 
-const filteredDeliveries = computed(() => {
-    const search = deliverySearch.value.toLowerCase().trim();
+    const selected = customerOptions.value.find((customer) => String(customer.id) === String(form.customer_id));
 
-    return props.deliveryReferences.filter((delivery) => {
-        if (!search) {
-            return true;
-        }
-
-        return delivery.recipient_name?.toLowerCase().includes(search)
-            || delivery.recipient_phone?.toLowerCase().includes(search)
-            || delivery.full_address?.toLowerCase().includes(search);
-    });
+    return selected ?? selectedCustomerSnapshot.value;
 });
 
 const selectedDelivery = computed(() => {
-    return props.deliveryReferences.find((delivery) => String(delivery.id) === String(form.delivery_id)) ?? null;
+    if (!form.delivery_id) {
+        return null;
+    }
+
+    const selected = deliveryOptions.value.find((delivery) => String(delivery.id) === String(form.delivery_id));
+
+    return selected ?? selectedDeliverySnapshot.value;
 });
 
 const cartTotal = computed(() => {
@@ -221,6 +213,119 @@ const removeCartItem = (cartId) => {
     cartItems.value = cartItems.value.filter((item) => item.cart_id !== cartId);
 };
 
+const applyCatalogFilters = () => {
+    router.get(route('orders.index'), {
+        catalog_search: catalogSearch.value || '',
+        catalog_category_id: selectedCategoryId.value || '',
+        catalog_page: 1,
+    }, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        only: ['bouquetUnits', 'catalogFilters'],
+    });
+};
+
+const goToCatalogPage = (url) => {
+    if (!url) {
+        return;
+    }
+
+    router.get(url, {}, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        only: ['bouquetUnits', 'catalogFilters'],
+    });
+};
+
+let customerLookupRequest = 0;
+const fetchCustomerOptions = async () => {
+    if (customerMode.value !== 'existing') {
+        return;
+    }
+
+    const search = customerSearch.value.trim();
+    if (search === '') {
+        customerOptions.value = [];
+        customerLookupLoading.value = false;
+        return;
+    }
+
+    const requestId = ++customerLookupRequest;
+    customerLookupLoading.value = true;
+
+    try {
+        const { data } = await axios.get(route('orders.lookups.customers'), {
+            params: {
+                search,
+                limit: LOOKUP_LIMIT,
+            },
+        });
+
+        if (requestId !== customerLookupRequest) {
+            return;
+        }
+
+        customerOptions.value = Array.isArray(data?.data) ? data.data : [];
+    } catch (error) {
+        if (requestId !== customerLookupRequest) {
+            return;
+        }
+
+        customerOptions.value = [];
+    } finally {
+        if (requestId === customerLookupRequest) {
+            customerLookupLoading.value = false;
+        }
+    }
+};
+
+let deliveryLookupRequest = 0;
+const fetchDeliveryOptions = async () => {
+    if (form.shipping_type !== 'delivery' || deliveryMode.value !== 'existing') {
+        return;
+    }
+
+    const search = deliverySearch.value.trim();
+    if (search === '') {
+        deliveryOptions.value = [];
+        deliveryLookupLoading.value = false;
+        return;
+    }
+
+    const requestId = ++deliveryLookupRequest;
+    deliveryLookupLoading.value = true;
+
+    try {
+        const { data } = await axios.get(route('orders.lookups.deliveries'), {
+            params: {
+                search,
+                limit: LOOKUP_LIMIT,
+            },
+        });
+
+        if (requestId !== deliveryLookupRequest) {
+            return;
+        }
+
+        deliveryOptions.value = Array.isArray(data?.data) ? data.data : [];
+    } catch (error) {
+        if (requestId !== deliveryLookupRequest) {
+            return;
+        }
+
+        deliveryOptions.value = [];
+    } finally {
+        if (requestId === deliveryLookupRequest) {
+            deliveryLookupLoading.value = false;
+        }
+    }
+};
+
+const debouncedFetchCustomerOptions = debounce(fetchCustomerOptions, 300);
+const debouncedFetchDeliveryOptions = debounce(fetchDeliveryOptions, 300);
+
 const submitOrder = () => {
     form.customer_mode = customerMode.value;
     form.delivery_mode = deliveryMode.value;
@@ -286,8 +391,12 @@ const submitOrder = () => {
             form.shipping_type = 'delivery';
             customerMode.value = 'existing';
             customerSearch.value = '';
+            customerOptions.value = [];
+            selectedCustomerSnapshot.value = null;
             deliveryMode.value = 'new';
             deliverySearch.value = '';
+            deliveryOptions.value = [];
+            selectedDeliverySnapshot.value = null;
         },
     });
 };
@@ -298,11 +407,17 @@ watch(customerMode, (mode) => {
     if (mode === 'existing') {
         form.new_customer_name = '';
         form.new_customer_phone_number = '';
+        if (customerSearch.value.trim() !== '') {
+            debouncedFetchCustomerOptions();
+        }
 
         return;
     }
 
     form.customer_id = '';
+    customerSearch.value = '';
+    customerOptions.value = [];
+    selectedCustomerSnapshot.value = null;
 });
 
 watch(deliveryMode, (mode) => {
@@ -312,11 +427,17 @@ watch(deliveryMode, (mode) => {
         form.delivery_recipient_name = '';
         form.delivery_recipient_phone = '';
         form.delivery_full_address = '';
+        if (deliverySearch.value.trim() !== '' && form.shipping_type === 'delivery') {
+            debouncedFetchDeliveryOptions();
+        }
 
         return;
     }
 
     form.delivery_id = '';
+    deliverySearch.value = '';
+    deliveryOptions.value = [];
+    selectedDeliverySnapshot.value = null;
 });
 
 watch(() => form.shipping_type, (shippingType) => {
@@ -330,7 +451,69 @@ watch(() => form.shipping_type, (shippingType) => {
     form.delivery_recipient_name = '';
     form.delivery_recipient_phone = '';
     form.delivery_full_address = '';
+    deliveryOptions.value = [];
+    selectedDeliverySnapshot.value = null;
 });
+
+watch(customerSearch, () => {
+    if (customerMode.value !== 'existing') {
+        return;
+    }
+
+    debouncedFetchCustomerOptions();
+});
+
+watch(deliverySearch, () => {
+    if (form.shipping_type !== 'delivery' || deliveryMode.value !== 'existing') {
+        return;
+    }
+
+    debouncedFetchDeliveryOptions();
+});
+
+watch(
+    () => form.customer_id,
+    (id) => {
+        if (!id) {
+            selectedCustomerSnapshot.value = null;
+            return;
+        }
+
+        const selected = customerOptions.value.find((customer) => String(customer.id) === String(id));
+        if (selected) {
+            selectedCustomerSnapshot.value = selected;
+        }
+    },
+);
+
+watch(
+    () => form.delivery_id,
+    (id) => {
+        if (!id) {
+            selectedDeliverySnapshot.value = null;
+            return;
+        }
+
+        const selected = deliveryOptions.value.find((delivery) => String(delivery.id) === String(id));
+        if (selected) {
+            selectedDeliverySnapshot.value = selected;
+        }
+    },
+);
+
+watch(
+    () => props.catalogFilters?.search,
+    (value) => {
+        catalogSearch.value = value || '';
+    },
+);
+
+watch(
+    () => props.catalogFilters?.category_id,
+    (value) => {
+        selectedCategoryId.value = value || '';
+    },
+);
 </script>
 
 <template>
@@ -377,10 +560,12 @@ watch(() => form.shipping_type, (shippingType) => {
                                 type="text"
                                 placeholder="Cari nama / serial bouquet..."
                                 class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300"
+                                @keyup.enter="applyCatalogFilters"
                             >
                             <select
                                 v-model="selectedCategoryId"
                                 class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300"
+                                @change="applyCatalogFilters"
                             >
                                 <option value="">Semua kategori</option>
                                 <option
@@ -393,9 +578,15 @@ watch(() => form.shipping_type, (shippingType) => {
                             </select>
                         </div>
 
+                        <div class="flex justify-end">
+                            <BaseButton size="sm" @click="applyCatalogFilters">
+                                Terapkan Filter
+                            </BaseButton>
+                        </div>
+
                         <div class="grid gap-3 md:grid-cols-2">
                             <button
-                                v-for="unit in filteredBouquets"
+                                v-for="unit in catalogBouquets"
                                 :key="unit.id"
                                 type="button"
                                 class="group rounded-2xl border border-pink-200 p-3 text-left transition hover:border-pink-400 hover:bg-pink-50"
@@ -421,6 +612,36 @@ watch(() => form.shipping_type, (shippingType) => {
                                     </div>
                                 </div>
                             </button>
+                        </div>
+
+                        <div
+                            v-if="catalogBouquets.length === 0"
+                            class="rounded-2xl border border-dashed border-pink-200 bg-pink-50/50 p-6 text-center text-sm text-pink-700"
+                        >
+                            Bouquet tidak ditemukan untuk filter ini.
+                        </div>
+
+                        <div
+                            v-if="bouquetUnits.links && bouquetUnits.links.length > 3"
+                            class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-pink-200 bg-pink-50/40 px-3 py-2"
+                        >
+                            <p class="text-xs text-pink-700">
+                                Menampilkan {{ bouquetUnits.from || 0 }} - {{ bouquetUnits.to || 0 }} dari {{ bouquetUnits.total || 0 }}
+                            </p>
+                            <div class="flex flex-wrap gap-1">
+                                <button
+                                    v-for="(link, index) in bouquetUnits.links"
+                                    :key="`catalog-page-${index}`"
+                                    type="button"
+                                    :disabled="!link.url"
+                                    class="rounded-lg border px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
+                                    :class="link.active
+                                        ? 'border-pink-600 bg-pink-600 text-white'
+                                        : 'border-pink-200 bg-white text-pink-700 hover:bg-pink-50'"
+                                    @click="goToCatalogPage(link.url)"
+                                    v-html="link.label"
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -572,19 +793,32 @@ watch(() => form.shipping_type, (shippingType) => {
                                     placeholder="Cari nama / no hp customer..."
                                     class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300"
                                 >
+                                <p class="text-[11px] text-pink-700">
+                                    Ketik untuk cari customer. Menampilkan hingga {{ LOOKUP_LIMIT }} hasil teratas.
+                                </p>
                                 <select
                                     v-model="form.customer_id"
                                     class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300"
+                                    :disabled="customerOptions.length === 0"
                                 >
                                     <option value="">Pilih customer</option>
                                     <option
-                                        v-for="customer in filteredCustomers"
+                                        v-for="customer in customerOptions"
                                         :key="customer.id"
                                         :value="customer.id"
                                     >
                                         {{ customer.name }} - {{ customer.phone_number }} | {{ customer.orders_count ?? 0 }} order | {{ customer.order_items_count ?? customer.order_details_count ?? 0 }} barang
                                     </option>
                                 </select>
+                                <p v-if="customerLookupLoading" class="text-[11px] text-pink-700">
+                                    Mencari customer...
+                                </p>
+                                <p v-else-if="customerSearch.trim() && customerOptions.length === 0" class="text-[11px] text-pink-700">
+                                    Customer tidak ditemukan.
+                                </p>
+                                <p v-else-if="!customerSearch.trim()" class="text-[11px] text-pink-700">
+                                    Data belum ditampilkan. Mulai ketik kata kunci customer.
+                                </p>
                                 <div
                                     v-if="selectedCustomer"
                                     class="rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-xs text-pink-800"
@@ -658,19 +892,32 @@ watch(() => form.shipping_type, (shippingType) => {
                                         placeholder="Cari nama / no hp / alamat delivery..."
                                         class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300"
                                     >
+                                    <p class="text-[11px] text-pink-700">
+                                        Ketik untuk cari referensi delivery. Menampilkan hingga {{ LOOKUP_LIMIT }} hasil teratas.
+                                    </p>
                                     <select
                                         v-model="form.delivery_id"
                                         class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300"
+                                        :disabled="deliveryOptions.length === 0"
                                     >
                                         <option value="">Pilih data delivery</option>
                                         <option
-                                            v-for="delivery in filteredDeliveries"
+                                            v-for="delivery in deliveryOptions"
                                             :key="delivery.id"
                                             :value="delivery.id"
                                         >
                                             {{ delivery.recipient_name }} - {{ delivery.recipient_phone }}
                                         </option>
                                     </select>
+                                    <p v-if="deliveryLookupLoading" class="text-[11px] text-pink-700">
+                                        Mencari referensi delivery...
+                                    </p>
+                                    <p v-else-if="deliverySearch.trim() && deliveryOptions.length === 0" class="text-[11px] text-pink-700">
+                                        Referensi delivery tidak ditemukan.
+                                    </p>
+                                    <p v-else-if="!deliverySearch.trim()" class="text-[11px] text-pink-700">
+                                        Data belum ditampilkan. Mulai ketik kata kunci delivery.
+                                    </p>
 
                                     <div
                                         v-if="selectedDelivery"

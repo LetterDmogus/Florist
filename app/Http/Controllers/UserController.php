@@ -19,6 +19,13 @@ class UserController extends Controller
 {
     public function index(Request $request): Response
     {
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['name', 'email', 'created_at', 'updated_at'],
+            'name',
+            'asc',
+        );
+
         $users = User::query()
             ->with('roles:id,name')
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%")
@@ -28,7 +35,7 @@ class UserController extends Controller
                 $request->filled('role'),
                 fn ($q) => $q->role($request->string('role')->toString())
             )
-            ->orderBy('name')
+            ->orderBy($sortBy, $sortDir)
             ->paginate(20)
             ->withQueryString()
             ->through(fn (User $user): array => [
@@ -49,7 +56,7 @@ class UserController extends Controller
         return Inertia::render('Users/Index', [
             'users' => $users,
             'roles' => $roles,
-            'filters' => $request->only('search', 'role', 'trashed'),
+            'filters' => $request->only('search', 'role', 'trashed', 'sort_by', 'sort_dir'),
         ]);
     }
 

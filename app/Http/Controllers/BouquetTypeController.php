@@ -17,8 +17,12 @@ class BouquetTypeController extends Controller
 {
     public function index(Request $request): Response
     {
-        $sortBy = $request->input('sort_by', 'name');
-        $sortDir = $request->input('sort_dir', 'asc');
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['name', 'category_id', 'is_custom', 'created_at', 'updated_at'],
+            'name',
+            'asc',
+        );
 
         $types = BouquetType::with('category')
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%"))

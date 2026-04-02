@@ -42,7 +42,10 @@ class StockMovement extends Model
 
     public function getActivitylogOptions(): LogOptions
     {
-        return LogOptions::defaults()->logFillable()->logOnlyDirty();
+        return LogOptions::defaults()
+            ->useLogName('inventory')
+            ->logFillable()
+            ->logOnlyDirty();
     }
 
     public function item(): BelongsTo

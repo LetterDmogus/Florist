@@ -18,6 +18,7 @@ use App\Models\StockMovement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class ReportMonthlyTemplateTest extends TestCase
@@ -238,12 +239,50 @@ class ReportMonthlyTemplateTest extends TestCase
         $this->assertStringContainsString('.xlsx', (string) $purchaseExport->headers->get('content-disposition'));
     }
 
+    public function test_admin_can_queue_sales_and_purchase_exports(): void
+    {
+        $admin = User::factory()->create();
+        $this->assignRole($admin, 'admin');
+
+        $this->actingAs($admin)
+            ->from(route('reports.sales.index'))
+            ->get(route('reports.sales.export', [
+                'month' => 3,
+                'year' => 2026,
+                'queued' => 1,
+            ]))
+            ->assertRedirect(route('reports.sales.index'));
+
+        $this->actingAs($admin)
+            ->from(route('reports.purchases.index'))
+            ->get(route('reports.purchases.export', [
+                'month' => 3,
+                'year' => 2026,
+                'queued' => 1,
+            ]))
+            ->assertRedirect(route('reports.purchases.index'));
+    }
+
     private function assignRole(User $user, string $roleName): void
     {
         $role = Role::firstOrCreate([
             'name' => $roleName,
             'guard_name' => 'web',
         ]);
+
+        $permissions = match ($roleName) {
+            'admin' => ['reports.view', 'reports.export'],
+            'manager' => ['reports.view'],
+            default => [],
+        };
+
+        foreach ($permissions as $permissionName) {
+            Permission::findOrCreate($permissionName, 'web');
+        }
+
+        if (! empty($permissions)) {
+            $role->syncPermissions($permissions);
+        }
 
         $user->assignRole($role);
     }

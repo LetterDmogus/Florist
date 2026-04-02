@@ -16,8 +16,12 @@ class ItemCategoryController extends Controller
 {
     public function index(Request $request): Response
     {
-        $sortBy = $request->input('sort_by', 'name');
-        $sortDir = $request->input('sort_dir', 'asc');
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['name', 'slug', 'item_units_count', 'created_at', 'updated_at'],
+            'name',
+            'asc',
+        );
 
         $categories = ItemCategory::query()
             ->withCount('itemUnits')

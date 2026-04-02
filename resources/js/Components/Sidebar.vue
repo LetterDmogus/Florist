@@ -18,12 +18,20 @@ import {
 const page = usePage();
 const user = computed(() => page.props.auth.user);
 
+const can = (permission) => {
+    if (user.value?.permissions?.includes('*')) {
+        return true;
+    }
+
+    return user.value?.permissions?.includes(permission);
+};
+
 const hasRole = (role) => {
-    return user.value?.roles?.some(r => r.name === role);
+    return user.value?.roles?.includes(role);
 };
 
 const hasAnyRole = (roles) => {
-    return user.value?.roles?.some(r => roles.includes(r.name));
+    return user.value?.roles?.some(role => roles.includes(role));
 };
 
 const isItemActive = (item) => {
@@ -42,31 +50,31 @@ const menuItems = computed(() => {
             name: 'Dashboard',
             icon: LayoutDashboard,
             route: 'dashboard',
-            show: true
+            show: can('dashboard.view')
         },
         {
             name: 'Orders',
             icon: ShoppingCart,
             route: 'orders.index',
-            show: hasAnyRole(['super-admin', 'admin', 'kasir', 'manager'])
+            show: can('orders.view')
         },
         {
             name: 'Order Status',
             icon: History,
             route: 'orders.status.index',
-            show: hasAnyRole(['super-admin', 'admin'])
+            show: can('orders.status.view')
         },
         {
             name: 'Customers',
             icon: Users,
             route: 'customers.index',
-            show: hasAnyRole(['super-admin', 'admin', 'kasir', 'manager'])
+            show: can('customers.view')
         },
         {
             name: 'Inventory',
             icon: Package,
             route: 'item-units.index',
-            show: hasAnyRole(['super-admin', 'admin', 'manager']),
+            show: can('inventory.view'),
             children: [
                 { name: 'Inventory Units', route: 'item-units.index' },
                 { name: 'Categories', route: 'item-categories.index' },
@@ -76,7 +84,7 @@ const menuItems = computed(() => {
             name: 'Bouquets',
             icon: Flower2,
             route: 'bouquet-units.index',
-            show: hasAnyRole(['super-admin', 'admin', 'manager', 'kasir']),
+            show: can('bouquets.view'),
             children: [
                 { name: 'Bundles / Units', route: 'bouquet-units.index' },
                 { name: 'Bouquet Types', route: 'bouquet-types.index' },
@@ -87,19 +95,19 @@ const menuItems = computed(() => {
             name: 'Deliveries',
             icon: Truck,
             route: 'deliveries.index',
-            show: hasAnyRole(['super-admin', 'admin', 'manager'])
+            show: can('deliveries.view')
         },
         {
             name: 'Stock Movements',
             icon: History,
             route: 'stock-movements.index',
-            show: hasAnyRole(['super-admin', 'admin', 'manager'])
+            show: can('stock.view')
         },
         {
             name: 'Reports',
             icon: BarChart3,
-            route: 'reports.sales.index',
-            show: hasAnyRole(['super-admin', 'admin', 'manager']),
+            route: 'reports.index',
+            show: can('reports.view'),
             children: [
                 { name: 'Laporan Penjualan', route: 'reports.sales.index' },
                 { name: 'Laporan Pembelian', route: 'reports.purchases.index' },
@@ -109,25 +117,39 @@ const menuItems = computed(() => {
             name: 'User Management',
             icon: UserCog,
             route: 'users.index',
-            show: hasRole('super-admin')
+            show: can('users.manage')
         },
         {
             name: 'Role Management',
             icon: ShieldCheck,
             route: 'roles.index',
-            show: hasRole('super-admin')
+            show: can('roles.manage'),
+            children: [
+                ...(page.props.roles_list || []).map(role => ({
+                    name: role.name,
+                    route: 'roles.edit',
+                    params: { role: role.id }
+                })),
+                { name: '+ Tambah Role', route: 'roles.create' },
+            ]
         },
         {
             name: 'Activity Log',
             icon: History,
             route: 'activities.index',
-            show: hasRole('super-admin')
+            show: can('logs.view')
+        },
+        {
+            name: 'Backup System',
+            icon: Package,
+            route: 'backups.index',
+            show: can('logs.view')
         },
         {
             name: 'Settings',
             icon: Settings,
             route: 'settings.index',
-            show: hasRole('super-admin')
+            show: can('settings.manage')
         }
     ];
 
@@ -170,9 +192,9 @@ const menuItems = computed(() => {
                         <Link 
                             v-for="child in item.children" 
                             :key="child.name"
-                            :href="route(child.route)"
+                            :href="route(child.route, child.params || {})"
                             class="block px-4 py-2 text-xs font-medium rounded-xl transition-all duration-200"
-                            :class="route().current(child.route) ? 'text-pink-950 font-bold bg-white border border-pink-200' : 'text-pink-700 hover:text-pink-950 hover:bg-white/90'"
+                            :class="route().current(child.route, child.params || {}) ? 'text-pink-950 font-bold bg-white border border-pink-200' : 'text-pink-700 hover:text-pink-950 hover:bg-white/90'"
                         >
                             {{ child.name }}
                         </Link>
@@ -190,7 +212,7 @@ const menuItems = computed(() => {
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-pink-950 truncate">{{ user?.name }}</p>
                     <p class="text-xs text-pink-700 truncate capitalize">
-                        {{ user?.roles?.[0]?.name || 'User' }}
+                        {{ user?.roles?.[0] || 'User' }}
                     </p>
                 </div>
             </div>

@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class OrderStatusManagementTest extends TestCase
@@ -63,13 +64,49 @@ class OrderStatusManagementTest extends TestCase
         $response = $this
             ->actingAs($admin)
             ->patch(route('orders.status.update', $order), [
-                'order_status' => 'processing',
+                'order_status' => 'confirmed',
             ]);
 
         $response->assertRedirect();
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
-            'order_status' => 'processing',
+            'order_status' => 'confirmed',
+        ]);
+    }
+
+    public function test_admin_cannot_skip_order_status_step(): void
+    {
+        $admin = User::factory()->create();
+        $this->assignRole($admin, 'admin');
+
+        $customer = Customer::create([
+            'name' => 'Status Customer Skip',
+            'phone_number' => '081200001112',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $admin->id,
+            'customer_id' => $customer->id,
+            'total' => 150000,
+            'shipping_date' => '2026-03-31',
+            'shipping_time' => '10:00',
+            'shipping_type' => 'delivery',
+            'payment_status' => 'unpaid',
+            'order_status' => 'pending',
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->from(route('orders.status.index'))
+            ->patch(route('orders.status.update', $order), [
+                'order_status' => 'processing',
+            ]);
+
+        $response->assertRedirect(route('orders.status.index'));
+        $response->assertSessionHasErrors('order_status');
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'order_status' => 'pending',
         ]);
     }
 
@@ -193,12 +230,61 @@ class OrderStatusManagementTest extends TestCase
         $response->assertDontSee('Customer Other');
     }
 
+    public function test_order_status_update_is_rate_limited(): void
+    {
+        $admin = User::factory()->create();
+        $this->assignRole($admin, 'admin');
+
+        $customer = Customer::create([
+            'name' => 'Status Customer Rate',
+            'phone_number' => '081200006666',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $admin->id,
+            'customer_id' => $customer->id,
+            'total' => 190000,
+            'shipping_date' => '2026-03-31',
+            'shipping_time' => '12:30',
+            'shipping_type' => 'delivery',
+            'payment_status' => 'unpaid',
+            'order_status' => 'pending',
+        ]);
+
+        for ($attempt = 0; $attempt < 30; $attempt++) {
+            $this->actingAs($admin)
+                ->patch(route('orders.status.update', $order), [
+                    'order_status' => 'confirmed',
+                ]);
+        }
+
+        $this->actingAs($admin)
+            ->patch(route('orders.status.update', $order), [
+                'order_status' => 'confirmed',
+            ])
+            ->assertStatus(429);
+    }
+
     private function assignRole(User $user, string $roleName): void
     {
         $role = Role::create([
             'name' => $roleName,
             'guard_name' => 'web',
         ]);
+
+        $permissions = match ($roleName) {
+            'admin' => ['orders.view', 'orders.status.view', 'orders.status.update'],
+            'kasir' => ['orders.view'],
+            default => [],
+        };
+
+        foreach ($permissions as $permissionName) {
+            Permission::findOrCreate($permissionName, 'web');
+        }
+
+        if (! empty($permissions)) {
+            $role->syncPermissions($permissions);
+        }
 
         $user->assignRole($role);
     }

@@ -191,15 +191,15 @@ const categoryColumns = [
 
 const typeColumns = [
     { label: 'Name', key: 'name' },
-    { label: 'Category', key: 'category' },
+    { label: 'Category', key: 'category', sortKey: 'category_id' },
     { label: 'Custom?', key: 'is_custom' },
 ];
 
 const unitColumns = [
-    { label: 'Image', key: 'image_url' },
+    { label: 'Image', key: 'image_url', sortable: false },
     { label: 'SKU / Serial', key: 'serial_number' },
     { label: 'Name', key: 'name' },
-    { label: 'Type', key: 'type' },
+    { label: 'Type', key: 'type', sortKey: 'type_id' },
     { label: 'Money Bouquet', key: 'price' },
 ];
 

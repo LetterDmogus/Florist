@@ -7,8 +7,10 @@ namespace App\Http\Controllers;
 use App\Actions\CreateStockMovementAction;
 use App\Http\Requests\StoreStockMovementRequest;
 use App\Models\Customer;
+use App\Models\Delivery;
 use App\Models\ItemUnit;
 use App\Models\StockMovement;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -18,11 +20,19 @@ class StockMovementController extends Controller
 {
     public function index(Request $request): Response
     {
-        $sortBy = $request->input('sort_by', 'created_at');
-        $sortDir = $request->input('sort_dir', 'desc');
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['created_at', 'type', 'quantity', 'price_at_the_time', 'total', 'item_id', 'order_id', 'description'],
+            'created_at',
+            'desc',
+        );
 
         $movements = StockMovement::query()
-            ->with(['item', 'order.customer'])
+            ->with([
+                'item:id,name,serial_number,stock,price',
+                'order:id,customer_id',
+                'order.customer:id,name',
+            ])
             ->when($request->search, function ($q) use ($request) {
                 $search = (string) $request->search;
 
@@ -46,20 +56,64 @@ class StockMovementController extends Controller
             ->when($request->date_to, fn ($q) => $q->whereDate('created_at', '<=', $request->date_to))
             ->orderBy($sortBy, $sortDir)
             ->paginate(30)
-            ->withQueryString();
-
-        $items = ItemUnit::query()
-            ->orderBy('name')
-            ->get(['id', 'name', 'serial_number', 'stock', 'price']);
+            ->withQueryString()
+            ->through(function (StockMovement $movement): array {
+                return [
+                    'id' => $movement->id,
+                    'created_at' => $movement->created_at?->toIso8601String(),
+                    'type' => $movement->type,
+                    'quantity' => (int) $movement->quantity,
+                    'price_at_the_time' => (float) $movement->price_at_the_time,
+                    'total' => (float) $movement->total,
+                    'description' => $movement->description,
+                    'order_id' => $movement->order_id,
+                    'reference_type' => $movement->order_id ? null : 'Manual',
+                    'item' => $movement->item ? [
+                        'id' => $movement->item->id,
+                        'name' => $movement->item->name,
+                        'serial_number' => $movement->item->serial_number,
+                        'stock' => (int) $movement->item->stock,
+                        'price' => (float) $movement->item->price,
+                    ] : null,
+                    'order' => $movement->order ? [
+                        'id' => $movement->order->id,
+                        'customer' => $movement->order->customer ? [
+                            'id' => $movement->order->customer->id,
+                            'name' => $movement->order->customer->name,
+                        ] : null,
+                    ] : null,
+                ];
+            });
 
         $customers = Customer::query()
             ->orderBy('name')
-            ->get(['id', 'name', 'phone_number']);
+            ->get(['id', 'name', 'phone_number'])
+            ->map(fn (Customer $customer): array => [
+                'id' => $customer->id,
+                'name' => $customer->name,
+                'phone_number' => $customer->phone_number,
+            ])
+            ->values()
+            ->all();
+
+        $deliveryReferences = Delivery::query()
+            ->orderByDesc('created_at')
+            ->limit(200)
+            ->get(['id', 'recipient_name', 'recipient_phone', 'full_address'])
+            ->map(fn (Delivery $delivery): array => [
+                'id' => $delivery->id,
+                'recipient_name' => $delivery->recipient_name,
+                'recipient_phone' => $delivery->recipient_phone,
+                'full_address' => $delivery->full_address,
+            ])
+            ->values()
+            ->all();
 
         return Inertia::render('StockMovements/Index', [
             'movements' => $movements,
-            'items' => $items,
+            'items' => [],
             'customers' => $customers,
+            'deliveryReferences' => $deliveryReferences,
             'filters' => $request->only('search', 'item_id', 'type', 'date_from', 'date_to', 'sort_by', 'sort_dir'),
             'typeOptions' => collect(StockMovement::TYPE_LABELS)
                 ->map(fn (string $label, string $value): array => [
@@ -69,6 +123,54 @@ class StockMovementController extends Controller
                 ->values()
                 ->all(),
             'canCreateStockMovement' => $request->user()?->hasAnyRole(['super-admin', 'admin']) ?? false,
+        ]);
+    }
+
+    public function itemLookup(Request $request): JsonResponse
+    {
+        $search = trim((string) $request->string('search')->toString());
+        $limit = max(5, min(10, (int) $request->integer('limit', 8)));
+
+        if ($search === '') {
+            return response()->json([
+                'data' => [],
+            ]);
+        }
+
+        $startsWith = "{$search}%";
+        $contains = "%{$search}%";
+
+        $items = ItemUnit::query()
+            ->select(['id', 'name', 'serial_number', 'stock', 'price'])
+            ->where(function ($query) use ($contains): void {
+                $query
+                    ->where('name', 'like', $contains)
+                    ->orWhere('serial_number', 'like', $contains);
+            })
+            ->orderByRaw(
+                'CASE
+                    WHEN serial_number LIKE ? THEN 0
+                    WHEN name LIKE ? THEN 1
+                    WHEN name LIKE ? THEN 2
+                    ELSE 3
+                END',
+                [$startsWith, $startsWith, $contains],
+            )
+            ->orderBy('name')
+            ->limit($limit)
+            ->get()
+            ->map(fn (ItemUnit $item): array => [
+                'id' => $item->id,
+                'name' => $item->name,
+                'serial_number' => $item->serial_number,
+                'stock' => (int) $item->stock,
+                'price' => (float) $item->price,
+            ])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'data' => $items,
         ]);
     }
 

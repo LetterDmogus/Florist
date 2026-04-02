@@ -14,8 +14,12 @@ class ActivityLogController extends Controller
 {
     public function index(Request $request): Response
     {
-        $sortBy = $request->input('sort_by', 'created_at');
-        $sortDir = $request->input('sort_dir', 'desc');
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['created_at', 'description', 'event', 'subject_type', 'subject_id', 'causer_id'],
+            'created_at',
+            'desc',
+        );
 
         $activities = Activity::with(['causer', 'subject'])
             ->when($request->search, function ($query, $search) {

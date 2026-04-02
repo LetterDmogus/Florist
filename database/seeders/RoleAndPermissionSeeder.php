@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Models\Role;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -16,78 +17,123 @@ class RoleAndPermissionSeeder extends Seeder
         // Reset cached roles and permissions
         app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // Create Permissions
-        $permissions = [
-            'manage users',
-            'manage roles',
-            'manage inventory',
-            'view inventory',
-            'manage bouquet',
-            'view bouquet',
-            'manage orders',
-            'view orders',
-            'manage customers',
-            'view customers',
-            'view reports',
-            'view activity log',
-            'view dashboard admin',
-            'view master data',
-            'input order baru',
-            'input jumlah dp',
-            'input custom bouquet',
-            'input pergerakan inventory',
-            'backup manual',
-            'import export data',
-            'hard delete data',
-            'site setting',
+        // Define Permissions by Module
+        $modules = [
+            'Dashboard' => [
+                'dashboard.view',
+            ],
+            'Orders' => [
+                'orders.view',
+                'orders.create',
+                'orders.status.view',
+                'orders.status.update',
+                'orders.print',
+                'orders.delete',
+            ],
+            'Customers' => [
+                'customers.view',
+                'customers.manage',
+                'customers.delete',
+            ],
+            'Inventory' => [
+                'inventory.view',
+                'inventory.manage',
+                'inventory.delete',
+                'stock.view',
+                'stock.manage',
+            ],
+            'Bouquets' => [
+                'bouquets.view',
+                'bouquets.manage',
+                'bouquets.delete',
+            ],
+            'Deliveries' => [
+                'deliveries.view',
+                'deliveries.manage',
+            ],
+            'Reports' => [
+                'reports.view',
+                'reports.export',
+            ],
+            'System' => [
+                'users.view',
+                'users.manage',
+                'roles.view',
+                'roles.manage',
+                'settings.manage',
+                'logs.view',
+            ],
         ];
 
-        foreach (array_unique($permissions) as $permission) {
-            Permission::findOrCreate($permission, 'web');
+        foreach ($modules as $module => $permissions) {
+            foreach ($permissions as $permission) {
+                Permission::findOrCreate($permission, 'web');
+            }
         }
 
         // Create Roles and Assign Permissions
 
-        // Super Admin: All permissions
-        $superAdmin = Role::findOrCreate('super-admin', 'web');
-        $superAdmin->syncPermissions(Permission::all());
+        // Super Admin
+        $superAdminRole = Role::findOrCreate('super-admin', 'web');
+        $superAdminRole->syncPermissions(Permission::all());
 
         // Admin
-        $admin = Role::findOrCreate('admin', 'web');
-        $admin->syncPermissions([
-            'view dashboard admin',
-            'view reports',
-            'view master data',
-            'view activity log',
-            'manage inventory',
-            'input pergerakan inventory',
-            'manage bouquet',
-            'manage customers',
-            'manage orders',
-            'input order baru',
-        ]);
-
-        // Manager
-        $manager = Role::findOrCreate('manager', 'web');
-        $manager->syncPermissions([
-            'view reports',
-            'view inventory',
-            'view bouquet',
-            'view orders',
-            'view customers',
-            'input pergerakan inventory',
-            'view dashboard admin',
+        $adminRole = Role::findOrCreate('admin', 'web');
+        $adminRole->syncPermissions([
+            'dashboard.view',
+            'orders.view',
+            'orders.create',
+            'orders.status.view',
+            'orders.status.update',
+            'orders.print',
+            'customers.view',
+            'customers.manage',
+            'inventory.view',
+            'inventory.manage',
+            'stock.view',
+            'stock.manage',
+            'bouquets.view',
+            'bouquets.manage',
+            'deliveries.view',
+            'deliveries.manage',
+            'reports.view',
+            'reports.export',
+            'logs.view',
         ]);
 
         // Kasir
-        $kasir = Role::findOrCreate('kasir', 'web');
-        $kasir->syncPermissions([
-            'input order baru',
-            'view orders',
-            'manage customers',
-            'input jumlah dp',
-            'input custom bouquet',
-            'view bouquet',
+        $kasirRole = Role::findOrCreate('kasir', 'web');
+        $kasirRole->syncPermissions([
+            'dashboard.view',
+            'orders.view',
+            'orders.create',
+            'orders.status.view',
+            'orders.print',
+            'customers.view',
+            'customers.manage',
+            'bouquets.view',
+            'stock.view',
         ]);
+
+        // Manager
+        $managerRole = Role::findOrCreate('manager', 'web');
+        $managerRole->syncPermissions([
+            'dashboard.view',
+            'orders.view',
+            'orders.status.view',
+            'customers.view',
+            'inventory.view',
+            'bouquets.view',
+            'deliveries.view',
+            'stock.view',
+            'reports.view',
+            'reports.export',
+        ]);
+
+        // Ensure Super Admin User
+        $user = User::where('email', 'super@bees.id')->first();
+        if ($user) {
+            $user->assignRole($superAdminRole);
+        }
     }
 }

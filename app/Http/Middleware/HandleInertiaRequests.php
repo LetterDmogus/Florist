@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Role;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -35,14 +36,29 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+        $roleNames = $user
+            ? $user->roles()->pluck('name')->values()->all()
+            : [];
+        $isSuperAdmin = in_array('super-admin', $roleNames, true);
+
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user()?->load('roles', 'permissions'),
+                'user' => $user ? [
+                    ...$user->toArray(),
+                    'roles' => $roleNames,
+                    'permissions' => $isSuperAdmin
+                        ? ['*']
+                        : $user->getAllPermissions()->pluck('name')->values()->all(),
+                ] : null,
             ],
+            'roles_list' => $isSuperAdmin
+                ? Role::orderBy('name')->get(['id', 'name'])
+                : [],
             'flash' => [
-                'success' => fn() => $request->session()->get('success'),
-                'error' => fn() => $request->session()->get('error'),
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
             ],
         ];
     }

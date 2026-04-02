@@ -39,7 +39,10 @@ class ItemUnit extends Model implements HasMedia
 
     public function getActivitylogOptions(): LogOptions
     {
-        return LogOptions::defaults()->logFillable()->logOnlyDirty();
+        return LogOptions::defaults()
+            ->useLogName('inventory')
+            ->logFillable()
+            ->logOnlyDirty();
     }
 
     public function getImageUrlAttribute(): ?string

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import DataTable from '@/Components/DataTable.vue';
 import Modal from '@/Components/Modal.vue';
@@ -16,12 +16,22 @@ const props = defineProps({
     movements: Object,
     items: Array,
     customers: Array,
+    deliveryReferences: Array,
     filters: Object,
     typeOptions: Array,
     canCreateStockMovement: Boolean,
 });
 
 const showModal = ref(false);
+const deliveryMode = ref('new');
+const deliverySearch = ref('');
+const itemSearch = ref('');
+const itemOptions = ref([]);
+const itemLookupLoading = ref(false);
+const selectedItemOption = ref(null);
+
+let itemLookupTimer = null;
+let itemLookupRequestId = 0;
 
 const form = useForm({
     item_id: '',
@@ -36,21 +46,75 @@ const form = useForm({
     shipping_date: new Date().toISOString().split('T')[0],
     shipping_time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }),
     shipping_type: 'pickup',
+    delivery_mode: 'new',
+    delivery_id: '',
+    delivery_recipient_name: '',
+    delivery_recipient_phone: '',
+    delivery_full_address: '',
     down_payment: 0,
+});
+
+const filteredDeliveries = computed(() => {
+    const search = deliverySearch.value.toLowerCase().trim();
+    if (!search) return props.deliveryReferences || [];
+
+    return props.deliveryReferences.filter((delivery) => {
+        return delivery.recipient_name?.toLowerCase().includes(search)
+            || delivery.recipient_phone?.toLowerCase().includes(search)
+            || delivery.full_address?.toLowerCase().includes(search);
+    });
+});
+
+const selectedDelivery = computed(() => {
+    return props.deliveryReferences.find((delivery) => String(delivery.id) === String(form.delivery_id)) ?? null;
+});
+
+watch(() => form.delivery_id, (id) => {
+    if (id && deliveryMode.value === 'existing') {
+        const d = props.deliveryReferences.find(item => String(item.id) === String(id));
+        if (d) {
+            form.delivery_recipient_name = d.recipient_name;
+            form.delivery_recipient_phone = d.recipient_phone;
+            form.delivery_full_address = d.full_address;
+        }
+    }
 });
 
 const columns = [
     { label: 'Date', key: 'created_at' },
-    { label: 'Item', key: 'item' },
+    { label: 'Item', key: 'item', sortKey: 'item_id' },
     { label: 'Type', key: 'type' },
     { label: 'Quantity', key: 'quantity' },
-    { label: 'Reference', key: 'reference' },
+    { label: 'Reference', key: 'reference', sortKey: 'order_id' },
     { label: 'Notes', key: 'description' },
 ];
 
 const selectedItem = computed(() => {
-    return props.items.find(i => i.id === Number(form.item_id));
+    const selectedId = Number(form.item_id);
+    if (!selectedId) {
+        return null;
+    }
+
+    if (selectedItemOption.value && Number(selectedItemOption.value.id) === selectedId) {
+        return selectedItemOption.value;
+    }
+
+    return itemOptions.value.find(item => Number(item.id) === selectedId) ?? null;
 });
+
+const syncSelectedItemOption = () => {
+    const selectedId = Number(form.item_id);
+    if (!selectedId) {
+        selectedItemOption.value = null;
+
+        return;
+    }
+
+    const found = itemOptions.value.find(item => Number(item.id) === selectedId);
+    if (found) {
+        selectedItemOption.value = found;
+    }
+};
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('id-ID', {
@@ -72,13 +136,96 @@ const formatDate = (date) => {
 
 const openCreateModal = () => {
     form.reset();
+    itemSearch.value = '';
+    itemOptions.value = [];
+    selectedItemOption.value = null;
+    itemLookupLoading.value = false;
     showModal.value = true;
 };
 
 const closeModal = () => {
     showModal.value = false;
     form.reset();
+    itemSearch.value = '';
+    itemOptions.value = [];
+    selectedItemOption.value = null;
+    itemLookupLoading.value = false;
 };
+
+const fetchItemOptions = async () => {
+    const search = itemSearch.value.trim();
+    const requestId = ++itemLookupRequestId;
+
+    if (search === '') {
+        itemOptions.value = [];
+        itemLookupLoading.value = false;
+        syncSelectedItemOption();
+
+        return;
+    }
+
+    itemLookupLoading.value = true;
+
+    try {
+        const url = new URL(route('stock-movements.lookups.items'), window.location.origin);
+        url.searchParams.set('search', search);
+        url.searchParams.set('limit', '8');
+
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+            throw new Error(`Lookup failed with status ${response.status}`);
+        }
+
+        const payload = await response.json();
+        if (requestId !== itemLookupRequestId) {
+            return;
+        }
+
+        itemOptions.value = Array.isArray(payload?.data) ? payload.data : [];
+        syncSelectedItemOption();
+    } catch {
+        if (requestId !== itemLookupRequestId) {
+            return;
+        }
+
+        itemOptions.value = [];
+    } finally {
+        if (requestId === itemLookupRequestId) {
+            itemLookupLoading.value = false;
+        }
+    }
+};
+
+const queueItemLookup = () => {
+    if (itemLookupTimer) {
+        clearTimeout(itemLookupTimer);
+    }
+
+    itemLookupTimer = window.setTimeout(() => {
+        void fetchItemOptions();
+    }, 250);
+};
+
+watch(
+    () => form.item_id,
+    () => {
+        syncSelectedItemOption();
+    },
+);
+
+onBeforeUnmount(() => {
+    if (itemLookupTimer) {
+        clearTimeout(itemLookupTimer);
+    }
+});
 
 const submit = () => {
     form.post(route('stock-movements.store'), {
@@ -192,9 +339,25 @@ const submit = () => {
                     <div class="space-y-6">
                         <div class="space-y-2">
                             <InputLabel for="item_id" value="Pilih Item" />
-                            <select v-model="form.item_id" id="item_id" class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300">
-                                <option value="" disabled>Pilih item inventory</option>
-                                <option v-for="item in items" :key="item.id" :value="item.id">
+                            <TextInput
+                                v-model="itemSearch"
+                                type="text"
+                                class="w-full"
+                                placeholder="Ketik nama / serial item..."
+                                @input="queueItemLookup"
+                            />
+                            <p class="text-[11px] text-muted-foreground">
+                                {{
+                                    itemLookupLoading
+                                        ? 'Mencari item...'
+                                        : itemSearch
+                                            ? `Menampilkan ${itemOptions.length} hasil teratas`
+                                            : 'Ketik untuk menampilkan data item'
+                                }}
+                            </p>
+                            <select v-model="form.item_id" id="item_id" class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300" @change="syncSelectedItemOption">
+                                <option value="" disabled>Pilih item dari hasil pencarian</option>
+                                <option v-for="item in itemOptions" :key="item.id" :value="item.id">
                                     {{ item.name }} (Stok: {{ item.stock }})
                                 </option>
                             </select>
@@ -327,6 +490,46 @@ const submit = () => {
                                         <Truck v-if="st === 'delivery'" class="w-3 h-3" />
                                         {{ st }}
                                     </BaseButton>
+                                </div>
+                            </div>
+
+                            <!-- Delivery Details -->
+                            <div v-if="form.shipping_type === 'delivery'" class="space-y-3 rounded-2xl border border-blue-200 bg-white p-3">
+                                <div class="inline-flex rounded-xl border border-blue-100 bg-blue-50 p-1">
+                                    <BaseButton 
+                                        type="button"
+                                        :variant="deliveryMode === 'new' ? 'primary' : 'ghost'"
+                                        size="sm"
+                                        @click="deliveryMode = 'new'; form.delivery_mode = 'new'"
+                                        class="!text-[10px]"
+                                    >
+                                        Penerima Baru
+                                    </BaseButton>
+                                    <BaseButton 
+                                        type="button"
+                                        :variant="deliveryMode === 'existing' ? 'primary' : 'ghost'"
+                                        size="sm"
+                                        @click="deliveryMode = 'existing'; form.delivery_mode = 'existing'"
+                                        class="!text-[10px]"
+                                    >
+                                        Alamat Terdaftar
+                                    </BaseButton>
+                                </div>
+
+                                <div v-if="deliveryMode === 'existing'" class="space-y-2">
+                                    <input v-model="deliverySearch" type="text" placeholder="Cari alamat/penerima..." class="w-full rounded-xl border-blue-100 text-[10px] focus:ring-blue-300">
+                                    <select v-model="form.delivery_id" class="w-full rounded-xl border-blue-200 text-xs">
+                                        <option value="">Pilih alamat...</option>
+                                        <option v-for="d in filteredDeliveries" :key="d.id" :value="d.id">
+                                            {{ d.recipient_name }} - {{ d.full_address }}
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <TextInput v-model="form.delivery_recipient_name" placeholder="Nama Penerima" class="w-full text-xs border-blue-100" :disabled="deliveryMode === 'existing'" />
+                                    <TextInput v-model="form.delivery_recipient_phone" placeholder="No HP Penerima" class="w-full text-xs border-blue-100" :disabled="deliveryMode === 'existing'" />
+                                    <textarea v-model="form.delivery_full_address" placeholder="Alamat Lengkap" rows="2" class="w-full rounded-xl border-blue-100 text-xs focus:ring-blue-300" :disabled="deliveryMode === 'existing'"></textarea>
                                 </div>
                             </div>
 

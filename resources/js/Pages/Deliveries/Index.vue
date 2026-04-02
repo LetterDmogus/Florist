@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import DataTable from '@/Components/DataTable.vue';
@@ -29,14 +29,20 @@ const props = defineProps({
 const showModal = ref(false);
 const editingDelivery = ref(null);
 const orderSearch = ref('');
+const orderOptions = ref(Array.isArray(props.orderOptions) ? [...props.orderOptions] : []);
+const orderLookupLoading = ref(false);
+const selectedOrderOption = ref(null);
 const selectedDate = ref(props.filters?.date || '');
 
+let orderLookupTimer = null;
+let orderLookupRequestId = 0;
+
 const columns = [
-    { label: 'Order', key: 'order' },
+    { label: 'Order', key: 'order', sortKey: 'order_id' },
     { label: 'Recipient', key: 'recipient_name' },
     { label: 'Phone', key: 'recipient_phone' },
     { label: 'Address', key: 'full_address' },
-    { label: 'Schedule', key: 'schedule' },
+    { label: 'Schedule', key: 'schedule', sortKey: 'shipping_date' },
 ];
 
 const form = useForm({
@@ -47,22 +53,35 @@ const form = useForm({
 });
 
 const filteredOrders = computed(() => {
-    const search = orderSearch.value.toLowerCase().trim();
-
-    return props.orderOptions.filter((order) => {
-        if (!search) {
-            return true;
-        }
-
-        return String(order.id).includes(search)
-            || (order.customer_name || '').toLowerCase().includes(search)
-            || (order.customer_phone_number || '').toLowerCase().includes(search);
-    });
+    return orderOptions.value;
 });
 
 const selectedOrder = computed(() => {
-    return props.orderOptions.find((order) => String(order.id) === String(form.order_id)) || null;
+    const selectedId = Number(form.order_id);
+    if (!selectedId) {
+        return null;
+    }
+
+    if (selectedOrderOption.value && Number(selectedOrderOption.value.id) === selectedId) {
+        return selectedOrderOption.value;
+    }
+
+    return orderOptions.value.find((order) => Number(order.id) === selectedId) || null;
 });
+
+const syncSelectedOrderOption = () => {
+    const selectedId = Number(form.order_id);
+    if (!selectedId) {
+        selectedOrderOption.value = null;
+
+        return;
+    }
+
+    const found = orderOptions.value.find((order) => Number(order.id) === selectedId);
+    if (found) {
+        selectedOrderOption.value = found;
+    }
+};
 
 const resetForm = () => {
     form.reset();
@@ -73,6 +92,9 @@ const resetForm = () => {
 const openCreateModal = () => {
     editingDelivery.value = null;
     resetForm();
+    orderOptions.value = [];
+    selectedOrderOption.value = null;
+    orderLookupLoading.value = false;
     showModal.value = true;
 };
 
@@ -83,6 +105,15 @@ const openEditModal = (delivery) => {
     form.recipient_phone = delivery.recipient_phone;
     form.full_address = delivery.full_address;
     orderSearch.value = '';
+    selectedOrderOption.value = {
+        id: delivery.order_id,
+        customer_name: delivery.order?.customer?.name || null,
+        customer_phone_number: delivery.order?.customer?.phone_number || null,
+        shipping_date: delivery.order?.shipping_date || null,
+        shipping_time: delivery.order?.shipping_time || null,
+        shipping_type: delivery.order?.shipping_type || null,
+    };
+    orderOptions.value = [selectedOrderOption.value];
     form.clearErrors();
     showModal.value = true;
 };
@@ -91,7 +122,93 @@ const closeModal = () => {
     showModal.value = false;
     editingDelivery.value = null;
     resetForm();
+    orderOptions.value = [];
+    selectedOrderOption.value = null;
+    orderLookupLoading.value = false;
 };
+
+const fetchOrderOptions = async () => {
+    const search = orderSearch.value.trim();
+    const requestId = ++orderLookupRequestId;
+
+    if (search === '') {
+        orderOptions.value = selectedOrderOption.value ? [selectedOrderOption.value] : [];
+        orderLookupLoading.value = false;
+        syncSelectedOrderOption();
+
+        return;
+    }
+
+    orderLookupLoading.value = true;
+
+    try {
+        const url = new URL(route('deliveries.lookups.orders'), window.location.origin);
+        url.searchParams.set('search', search);
+        url.searchParams.set('limit', '8');
+
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+            throw new Error(`Lookup failed with status ${response.status}`);
+        }
+
+        const payload = await response.json();
+        if (requestId !== orderLookupRequestId) {
+            return;
+        }
+
+        const nextOptions = Array.isArray(payload?.data) ? payload.data : [];
+        if (
+            selectedOrderOption.value &&
+            !nextOptions.some((order) => Number(order.id) === Number(selectedOrderOption.value.id))
+        ) {
+            nextOptions.unshift(selectedOrderOption.value);
+        }
+
+        orderOptions.value = nextOptions;
+        syncSelectedOrderOption();
+    } catch {
+        if (requestId !== orderLookupRequestId) {
+            return;
+        }
+
+        orderOptions.value = selectedOrderOption.value ? [selectedOrderOption.value] : [];
+    } finally {
+        if (requestId === orderLookupRequestId) {
+            orderLookupLoading.value = false;
+        }
+    }
+};
+
+const queueOrderLookup = () => {
+    if (orderLookupTimer) {
+        clearTimeout(orderLookupTimer);
+    }
+
+    orderLookupTimer = window.setTimeout(() => {
+        void fetchOrderOptions();
+    }, 250);
+};
+
+watch(
+    () => form.order_id,
+    () => {
+        syncSelectedOrderOption();
+    },
+);
+
+onBeforeUnmount(() => {
+    if (orderLookupTimer) {
+        clearTimeout(orderLookupTimer);
+    }
+});
 
 const submit = () => {
     const options = {
@@ -136,6 +253,8 @@ const forceDeleteDelivery = (delivery) => {
 const applyDateFilter = () => {
     router.get(route('deliveries.index'), {
         search: props.filters?.search || '',
+        sort_by: props.filters?.sort_by || 'created_at',
+        sort_dir: props.filters?.sort_dir || 'desc',
         ...(selectedDate.value ? { date: selectedDate.value } : {}),
     }, {
         preserveState: true,
@@ -258,10 +377,21 @@ const formatSchedule = (delivery) => {
                         v-model="orderSearch"
                         class="w-full"
                         placeholder="Cari order id / nama customer / no hp..."
+                        @input="queueOrderLookup"
                     />
+                    <p class="text-[11px] text-muted-foreground">
+                        {{
+                            orderLookupLoading
+                                ? 'Mencari order...'
+                                : orderSearch
+                                    ? `Menampilkan ${filteredOrders.length} hasil teratas`
+                                    : 'Ketik untuk menampilkan data order'
+                        }}
+                    </p>
                     <select
                         v-model="form.order_id"
                         class="w-full rounded-xl border-secondary focus:border-primary focus:ring-primary/40"
+                        @change="syncSelectedOrderOption"
                     >
                         <option value="">Pilih order</option>
                         <option

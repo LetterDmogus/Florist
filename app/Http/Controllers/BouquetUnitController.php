@@ -17,8 +17,12 @@ class BouquetUnitController extends Controller
 {
     public function index(Request $request): Response
     {
-        $sortBy = $request->input('sort_by', 'created_at');
-        $sortDir = $request->input('sort_dir', 'desc');
+        [$sortBy, $sortDir] = $this->resolveSort(
+            $request,
+            ['serial_number', 'name', 'price', 'type_id', 'created_at', 'updated_at'],
+            'created_at',
+            'desc',
+        );
 
         $units = BouquetUnit::with('type.category')
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%")

@@ -1,10 +1,10 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import DataTable from '@/Components/DataTable.vue';
 import Modal from '@/Components/Modal.vue';
-import { Head } from '@inertiajs/vue3';
-import { History, Eye, User, FileText, Activity } from 'lucide-vue-next';
+import { Head, router } from '@inertiajs/vue3';
+import { History, Eye, FileText, Activity, XCircle } from 'lucide-vue-next';
 
 const props = defineProps({
     activities: Object,
@@ -13,12 +13,13 @@ const props = defineProps({
 });
 
 const selectedActivity = ref(null);
+const causerFilter = ref(props.filters?.causer_id || '');
 
 const columns = [
     { label: 'Time', key: 'created_at' },
-    { label: 'User', key: 'causer' },
+    { label: 'User', key: 'causer', sortable: false },
     { label: 'Action', key: 'description' },
-    { label: 'Subject', key: 'subject' },
+    { label: 'Subject', key: 'subject', sortable: false },
     { label: 'Event', key: 'event' },
 ];
 
@@ -49,6 +50,19 @@ const openDetail = (activity) => {
 const closeDetail = () => {
     selectedActivity.value = null;
 };
+
+const applyCauserFilter = () => {
+    router.get(route('activities.index'), {
+        search: props.filters?.search || '',
+        causer_id: causerFilter.value || '',
+        sort_by: props.filters?.sort_by || 'created_at',
+        sort_dir: props.filters?.sort_dir || 'desc',
+    }, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+    });
+};
 </script>
 
 <template>
@@ -78,9 +92,9 @@ const closeDetail = () => {
                 >
                     <template #extra-filters>
                         <select 
-                            v-model="filters.causer_id" 
+                            v-model="causerFilter" 
                             class="rounded-xl border-secondary text-sm focus:ring-primary/50"
-                            @change="$inertia.get(route('activities.index'), { ...filters, causer_id: $event.target.value }, { preserveState: true })"
+                            @change="applyCauserFilter"
                         >
                             <option value="">Semua User</option>
                             <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
