@@ -113,6 +113,13 @@ class CreateStockMovementAction
         float $total,
     ): Order {
         $customerId = $this->resolveCustomerId($validated);
+        $downPayment = (float) ($validated['down_payment'] ?? 0);
+
+        if ($downPayment > $total) {
+            throw ValidationException::withMessages([
+                'down_payment' => 'Down payment tidak boleh lebih besar dari subtotal item.',
+            ]);
+        }
 
         /** @var Order $order */
         $order = Order::create([
@@ -122,8 +129,9 @@ class CreateStockMovementAction
             'shipping_date' => $validated['shipping_date'],
             'shipping_time' => $validated['shipping_time'],
             'shipping_type' => $validated['shipping_type'],
-            'down_payment' => $validated['down_payment'] ?? null,
-            'payment_status' => isset($validated['down_payment']) && (float) $validated['down_payment'] > 0 ? 'dp' : 'unpaid',
+            'shipping_fee' => 0,
+            'down_payment' => $downPayment > 0 ? $downPayment : null,
+            'payment_status' => $this->resolvePaymentStatus($total, $downPayment),
             'order_status' => 'pending',
             'description' => $validated['description'] ?? "Order otomatis dari stok jual item {$item->name}.",
         ]);
@@ -156,5 +164,18 @@ class CreateStockMovementAction
         ]);
 
         return $customer->id;
+    }
+
+    private function resolvePaymentStatus(float $total, float $downPayment): string
+    {
+        if ($downPayment <= 0) {
+            return 'paid';
+        }
+
+        if ($downPayment >= $total) {
+            return 'paid';
+        }
+
+        return 'dp';
     }
 }

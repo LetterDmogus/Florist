@@ -16,6 +16,7 @@ class CustomerController extends Controller
 {
     public function index(Request $request): Response
     {
+        $perPage = $this->resolvePerPage($request);
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
             ['name', 'phone_number', 'orders_count', 'created_at', 'updated_at'],
@@ -29,12 +30,15 @@ class CustomerController extends Controller
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
             ->withCount('orders')
             ->orderBy($sortBy === 'orders_count' ? 'orders_count' : $sortBy, $sortDir)
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
         return Inertia::render('Customers/Index', [
             'customers' => $customers,
-            'filters' => $request->only('search', 'trashed', 'sort_by', 'sort_dir'),
+            'filters' => [
+                ...$request->only('search', 'trashed', 'sort_by', 'sort_dir'),
+                'per_page' => $perPage,
+            ],
         ]);
     }
 

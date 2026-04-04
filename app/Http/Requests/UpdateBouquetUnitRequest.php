@@ -36,6 +36,7 @@ class UpdateBouquetUnitRequest extends FormRequest
             'money_bouquet' => ['nullable', 'numeric', 'min:0'],
             'price' => ['sometimes', 'required', 'numeric', 'min:0'],
             'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
+            'is_active' => ['nullable', 'boolean'],
         ];
     }
 }

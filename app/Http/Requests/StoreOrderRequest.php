@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -17,6 +18,11 @@ class StoreOrderRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $requestId = trim((string) ($this->input('request_id') ?: $this->header('Idempotency-Key', '')));
+        if ($requestId === '') {
+            $requestId = (string) Str::uuid();
+        }
+
         if (! $this->filled('customer_mode')) {
             $this->merge([
                 'customer_mode' => 'existing',
@@ -28,11 +34,16 @@ class StoreOrderRequest extends FormRequest
                 'delivery_mode' => 'new',
             ]);
         }
+
+        $this->merge([
+            'request_id' => $requestId,
+        ]);
     }
 
     public function rules(): array
     {
         return [
+            'request_id' => ['required', 'uuid'],
             'customer_mode' => ['required', Rule::in(['existing', 'new'])],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'new_customer_name' => ['nullable', 'string', 'max:255'],
@@ -40,6 +51,7 @@ class StoreOrderRequest extends FormRequest
             'shipping_date' => ['required', 'date'],
             'shipping_time' => ['required', 'date_format:H:i'],
             'shipping_type' => ['required', Rule::in(['delivery', 'pickup'])],
+            'shipping_fee' => ['nullable', 'numeric', 'min:0'],
             'delivery_mode' => ['nullable', Rule::in(['existing', 'new'])],
             'delivery_id' => ['nullable', 'integer', Rule::exists('deliveries', 'id')->whereNull('deleted_at')],
             'delivery_recipient_name' => ['nullable', 'string', 'max:255'],

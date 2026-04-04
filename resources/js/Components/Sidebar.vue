@@ -1,6 +1,7 @@
 <script setup>
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import { 
     LayoutDashboard, 
     Users, 
@@ -35,12 +36,28 @@ const hasAnyRole = (roles) => {
 };
 
 const isItemActive = (item) => {
+    // Current route name
+    const current = route().current();
+    if (!current) return false;
+
+    // Direct match or wildcard match for the main item
     if (route().current(item.route + '*')) {
         return true;
     }
-    if (item.children) {
-        return item.children.some(child => route().current(child.route + '*'));
+
+    // Special case for reports prefix
+    if (item.name === 'Reports' && current.startsWith('reports.')) {
+        return true;
     }
+
+    // Check children match
+    if (item.children) {
+        return item.children.some(child => {
+            // Using wildcard to ignore parameters
+            return route().current(child.route + '*');
+        });
+    }
+
     return false;
 };
 
@@ -55,7 +72,7 @@ const menuItems = computed(() => {
         {
             name: 'Orders',
             icon: ShoppingCart,
-            route: 'orders.index',
+            route: 'cashier.index',
             show: can('orders.view')
         },
         {
@@ -160,14 +177,10 @@ const menuItems = computed(() => {
 <template>
     <div class="flex flex-col h-full bg-gradient-to-b from-[#fff9fd] via-[#fff4fa] to-[#ffeff8] border-r border-pink-200/80 shadow-sm transition-all duration-300 w-64 md:w-72">
         <!-- Logo -->
-        <div class="px-6 py-8 flex items-center gap-3">
-            <div class="w-10 h-10 bg-pink-200 rounded-xl flex items-center justify-center border border-pink-300/90">
-                <Flower2 class="w-6 h-6 text-pink-700" />
-            </div>
-            <div>
-                <h1 class="text-xl font-bold tracking-tight text-pink-950">Bees Fleur</h1>
-                <p class="text-xs text-pink-700 uppercase tracking-widest font-semibold">Florist POS</p>
-            </div>
+        <div class="px-6 py-6">
+            <Link :href="route('dashboard')" class="flex items-center justify-center rounded-2xl border border-pink-200/90 bg-white/90 px-3 py-3 shadow-sm">
+                <ApplicationLogo class="h-16 w-full" />
+            </Link>
         </div>
 
         <!-- Navigation -->
@@ -194,7 +207,7 @@ const menuItems = computed(() => {
                             :key="child.name"
                             :href="route(child.route, child.params || {})"
                             class="block px-4 py-2 text-xs font-medium rounded-xl transition-all duration-200"
-                            :class="route().current(child.route, child.params || {}) ? 'text-pink-950 font-bold bg-white border border-pink-200' : 'text-pink-700 hover:text-pink-950 hover:bg-white/90'"
+                            :class="route().current(child.route + '*') ? 'text-pink-950 font-bold bg-white border border-pink-200' : 'text-pink-700 hover:text-pink-950 hover:bg-white/90'"
                         >
                             {{ child.name }}
                         </Link>

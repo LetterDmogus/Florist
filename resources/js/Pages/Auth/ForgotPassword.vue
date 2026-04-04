@@ -21,15 +21,15 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Forgot Password" />
+    <Head title="Lupa Password" />
 
     <AuthenticationCard>
         <template #logo>
             <AuthenticationCardLogo />
         </template>
 
-        <div class="mb-4 text-sm text-gray-600">
-            Forgot your password? No problem. Just let us know your email address and we will email you a password reset link that will allow you to choose a new one.
+        <div class="mb-4 text-sm text-pink-900/60">
+            Lupa password? Jangan khawatir. Masukkan alamat email Anda dan kami akan mengirimkan link reset password yang memungkinkan Anda untuk memilih password baru.
         </div>
 
         <div v-if="status" class="mb-4 font-medium text-sm text-green-600">
@@ -53,7 +53,7 @@ const submit = () => {
 
             <div class="flex items-center justify-end mt-4">
                 <PrimaryButton :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    Email Password Reset Link
+                    Kirim Link Reset Password
                 </PrimaryButton>
             </div>
         </form>

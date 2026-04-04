@@ -7,7 +7,9 @@ use App\Http\Controllers\BackupController;
 use App\Http\Controllers\BouquetCategoryController;
 use App\Http\Controllers\BouquetTypeController;
 use App\Http\Controllers\BouquetUnitController;
+use App\Http\Controllers\CashierController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\ItemCategoryController;
 use App\Http\Controllers\ItemUnitController;
@@ -21,7 +23,6 @@ use App\Http\Controllers\UserController;
 use App\Models\Customer;
 use App\Models\Order;
 use Illuminate\Foundation\Application;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -40,46 +41,7 @@ Route::middleware([
     'verified',
 ])->group(function () {
 
-    Route::get('/dashboard', function () {
-        // MySQL compatible date functions (assuming MySQL based on logs)
-        $weeklyData = Order::select([
-            DB::raw('DATE(created_at) as date'),
-            DB::raw('COUNT(*) as count'),
-            DB::raw('SUM(total) as total'),
-        ])
-            ->where('created_at', '>=', now()->subDays(7))
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get();
-
-        $monthlyData = Order::select([
-            DB::raw('DATE(created_at) as date'),
-            DB::raw('COUNT(*) as count'),
-            DB::raw('SUM(total) as total'),
-        ])
-            ->where('created_at', '>=', now()->subDays(30))
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get();
-
-        $yearlyData = Order::select([
-            DB::raw("DATE_FORMAT(created_at, '%Y-%m') as date"),
-            DB::raw('COUNT(*) as count'),
-            DB::raw('SUM(total) as total'),
-        ])
-            ->where('created_at', '>=', now()->subYear())
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get();
-
-        return Inertia::render('Dashboard', [
-            'chartData' => [
-                'weekly' => $weeklyData,
-                'monthly' => $monthlyData,
-                'yearly' => $yearlyData,
-            ],
-        ]);
-    })->name('dashboard');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // ─────────────────────────────────────────────────────────────────────────
     // Customer & Orders
@@ -96,26 +58,43 @@ Route::middleware([
             ->middleware('can:orders.status.view')
             ->name('orders.status.index');
 
+        Route::get('cashier', [CashierController::class, 'index'])
+            ->middleware('can:orders.create')
+            ->name('cashier.index');
+
         Route::get('orders/{order}/print', [OrderController::class, 'print'])
             ->middleware('can:orders.print')
             ->name('orders.print');
 
-        Route::get('orders/lookups/customers', [OrderController::class, 'customerLookup'])
+        Route::get('orders/lookups/customers', [CashierController::class, 'customerLookup'])
             ->middleware('throttle:lookup-search')
             ->name('orders.lookups.customers');
 
-        Route::get('orders/lookups/deliveries', [OrderController::class, 'deliveryLookup'])
+        Route::get('orders/lookups/deliveries', [CashierController::class, 'deliveryLookup'])
             ->middleware('throttle:lookup-search')
             ->name('orders.lookups.deliveries');
 
-        // Orders
-        Route::resource('orders', OrderController::class)
-            ->except(['edit']);
+        // Cashier checkout (order create endpoint)
+        Route::post('orders', [CashierController::class, 'store'])
+            ->middleware('can:orders.create')
+            ->middleware('throttle:sensitive-write')
+            ->name('orders.store');
+
+        // Disable legacy order resource pages (keep route names for compatibility)
+        Route::get('orders', fn () => redirect()->route('cashier.index'))->name('orders.index');
+        Route::get('orders/create', fn () => redirect()->route('cashier.index'))->name('orders.create');
+        Route::get('orders/{order}', fn () => redirect()->route('orders.status.index'))->name('orders.show');
+        Route::match(['put', 'patch'], 'orders/{order}', fn () => abort(404))->name('orders.update');
+        Route::delete('orders/{order}', fn () => abort(404))->name('orders.destroy');
 
         Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus'])
             ->middleware('can:orders.status.update')
             ->middleware('throttle:order-status-update')
             ->name('orders.status.update');
+        Route::patch('orders/{order}/payment-status', [OrderController::class, 'updatePaymentStatus'])
+            ->middleware('can:orders.status.update')
+            ->middleware('throttle:order-status-update')
+            ->name('orders.payment-status.update');
 
         // Order Details (nested under orders)
         Route::post('orders/{order}/details', [OrderController::class, 'storeDetail'])
@@ -229,6 +208,14 @@ Route::middleware([
 
         Route::post('reports/entries', [ReportController::class, 'storeEntry'])
             ->name('reports.entries.store')
+            ->middleware('can:reports.view')
+            ->middleware('throttle:sensitive-write');
+        Route::put('reports/entries/{reportEntry}', [ReportController::class, 'updateEntry'])
+            ->name('reports.entries.update')
+            ->middleware('can:reports.view')
+            ->middleware('throttle:sensitive-write');
+        Route::delete('reports/entries/{reportEntry}', [ReportController::class, 'destroyEntry'])
+            ->name('reports.entries.destroy')
             ->middleware('can:reports.view')
             ->middleware('throttle:sensitive-write');
     });

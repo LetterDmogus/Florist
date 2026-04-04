@@ -13,81 +13,153 @@ use App\Models\Delivery;
 use App\Models\ItemUnit;
 use App\Models\Order;
 use App\Models\OrderDetail;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class CreateOrderAction
 {
+    public function __construct(
+        private readonly SyncOrderShippingExpenseAction $syncOrderShippingExpenseAction,
+    ) {}
+
     public function handle(StoreOrderRequest $request): Order
     {
-        return DB::transaction(function () use ($request): Order {
-            $validated = $request->validated();
-            $customerId = $this->resolveCustomerId($validated);
-            $resolvedDetails = collect($validated['details'])
-                ->map(fn (array $detail): array => $this->resolveDetail($request, $detail))
-                ->all();
+        $requestId = trim((string) $request->input('request_id', ''));
 
-            // Hitung total dari detail
-            $total = collect($resolvedDetails)->sum(fn (array $detail): float => $this->calculateSubtotal($detail));
+        try {
+            return DB::transaction(function () use ($request): Order {
+                $validated = $request->validated();
+                $requestId = trim((string) ($validated['request_id'] ?? ''));
+                $existingOrder = $this->findExistingOrderByRequestId($requestId);
+                if ($existingOrder) {
+                    return $existingOrder;
+                }
 
-            /** @var Order $order */
-            $order = Order::create([
-                'user_id' => $request->user()->id,
-                'customer_id' => $customerId,
-                'total' => $total,
-                'shipping_date' => $validated['shipping_date'],
-                'shipping_time' => $validated['shipping_time'],
-                'shipping_type' => $validated['shipping_type'],
-                'down_payment' => $validated['down_payment'] ?? null,
-                'payment_status' => 'unpaid',
-                'order_status' => 'pending',
-                'description' => $validated['description'] ?? null,
-            ]);
+                $customerId = $this->resolveCustomerId($validated);
+                $resolvedDetails = collect($validated['details'])
+                    ->map(fn (array $detail): array => $this->resolveDetail($request, $detail))
+                    ->all();
 
-            // Buat order details
-            foreach ($resolvedDetails as $index => $detail) {
-                $subtotal = $this->calculateSubtotal($detail);
+                // Hitung total dari detail
+                $itemsTotal = collect($resolvedDetails)->sum(fn (array $detail): float => $this->calculateSubtotal($detail));
+                $shippingFee = $this->resolveShippingFee($validated);
+                $total = $itemsTotal + $shippingFee;
+                $downPayment = isset($validated['down_payment']) ? (float) $validated['down_payment'] : 0.0;
 
-                $orderDetail = OrderDetail::create([
-                    'order_id' => $order->id,
-                    'item_type' => $detail['item_type'],
-                    'quantity' => $this->resolveQuantity($detail),
-                    'subtotal' => $subtotal,
-                    'bouquet_unit_id' => $detail['bouquet_unit_id'] ?? null,
-                    'inventory_item_id' => $detail['inventory_item_id'] ?? null,
-                    'money_bouquet' => $detail['money_amount'] ?? $detail['money_bouquet'] ?? null,
-                    'greeting_card' => $detail['greeting_card'] ?? null,
-                    'sender_name' => $detail['sender_name'] ?? null,
+                if ($downPayment > $itemsTotal) {
+                    throw ValidationException::withMessages([
+                        'down_payment' => 'Down payment tidak boleh lebih besar dari subtotal item.',
+                    ]);
+                }
+
+                $paymentStatus = $this->resolvePaymentStatus((float) $total, $downPayment);
+
+                /** @var Order $order */
+                $order = Order::create([
+                    'user_id' => $request->user()->id,
+                    'customer_id' => $customerId,
+                    'request_id' => $requestId,
+                    'total' => $total,
+                    'shipping_date' => $validated['shipping_date'],
+                    'shipping_time' => $validated['shipping_time'],
+                    'shipping_type' => $validated['shipping_type'],
+                    'shipping_fee' => $shippingFee,
+                    'down_payment' => $downPayment > 0 ? $downPayment : null,
+                    'payment_status' => $paymentStatus,
+                    'order_status' => 'pending',
+                    'description' => $validated['description'] ?? null,
                 ]);
 
-                // Handle image upload for custom bouquet unit
-                if (($detail['mode'] ?? null) === 'custom' && $request->hasFile("details.{$index}.custom_image")) {
-                    $customUnit = BouquetUnit::find($detail['bouquet_unit_id']);
-                    if ($customUnit) {
-                        $customUnit->addMediaFromRequest("details.{$index}.custom_image")
-                            ->toMediaCollection('images');
+                // Buat order details
+                foreach ($resolvedDetails as $index => $detail) {
+                    $subtotal = $this->calculateSubtotal($detail);
+
+                    OrderDetail::create([
+                        'order_id' => $order->id,
+                        'item_type' => $detail['item_type'],
+                        'quantity' => $this->resolveQuantity($detail),
+                        'subtotal' => $subtotal,
+                        'bouquet_unit_id' => $detail['bouquet_unit_id'] ?? null,
+                        'inventory_item_id' => $detail['inventory_item_id'] ?? null,
+                        'money_bouquet' => $detail['money_amount'] ?? $detail['money_bouquet'] ?? null,
+                        'greeting_card' => $detail['greeting_card'] ?? null,
+                        'sender_name' => $detail['sender_name'] ?? null,
+                    ]);
+
+                    // Handle image upload for custom bouquet unit
+                    if (($detail['mode'] ?? null) === 'custom' && $request->hasFile("details.{$index}.custom_image")) {
+                        $customUnit = BouquetUnit::find($detail['bouquet_unit_id']);
+                        if ($customUnit) {
+                            $customUnit->addMediaFromRequest("details.{$index}.custom_image")
+                                ->toMediaCollection('images');
+                        }
                     }
+                }
+
+                $this->storeDeliveryIfNeeded($order, $validated);
+                $this->syncOrderShippingExpenseAction->handle($order, $request->user()->id);
+
+                activity('orders')
+                    ->causedBy($request->user())
+                    ->performedOn($order)
+                    ->event('created')
+                    ->withProperties([
+                        'customer_id' => $customerId,
+                        'shipping_type' => $validated['shipping_type'],
+                        'shipping_date' => $validated['shipping_date'],
+                        'shipping_time' => $validated['shipping_time'],
+                        'details_count' => count($resolvedDetails),
+                        'items_total' => (float) $itemsTotal,
+                        'shipping_fee' => $shippingFee,
+                        'total' => (float) $total,
+                        'down_payment' => $downPayment,
+                        'payment_status' => $paymentStatus,
+                    ])
+                    ->log('order.created');
+
+                return $order->load(['orderDetails', 'customer']);
+            });
+        } catch (QueryException $exception) {
+            if ($this->isDuplicateRequestIdException($exception, $requestId)) {
+                $existingOrder = $this->findExistingOrderByRequestId($requestId);
+                if ($existingOrder) {
+                    return $existingOrder;
                 }
             }
 
-            $this->storeDeliveryIfNeeded($order, $validated);
+            throw $exception;
+        }
+    }
 
-            activity('orders')
-                ->causedBy($request->user())
-                ->performedOn($order)
-                ->event('created')
-                ->withProperties([
-                    'customer_id' => $customerId,
-                    'shipping_type' => $validated['shipping_type'],
-                    'shipping_date' => $validated['shipping_date'],
-                    'shipping_time' => $validated['shipping_time'],
-                    'details_count' => count($resolvedDetails),
-                    'total' => (float) $total,
-                    'down_payment' => (float) ($validated['down_payment'] ?? 0),
-                ])
-                ->log('order.created');
+    private function findExistingOrderByRequestId(string $requestId): ?Order
+    {
+        if ($requestId === '') {
+            return null;
+        }
 
-            return $order->load(['orderDetails', 'customer']);
-        });
+        $order = Order::query()
+            ->where('request_id', $requestId)
+            ->first();
+
+        return $order?->loadMissing(['orderDetails', 'customer']);
+    }
+
+    private function isDuplicateRequestIdException(QueryException $exception, string $requestId): bool
+    {
+        if ($requestId === '') {
+            return false;
+        }
+
+        $sqlState = (string) ($exception->errorInfo[0] ?? '');
+        if ($sqlState !== '23000' && $sqlState !== '23505') {
+            return false;
+        }
+
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'orders_request_id_unique')
+            || str_contains($message, 'request_id');
     }
 
     private function storeDeliveryIfNeeded(Order $order, array $validated): void
@@ -224,5 +296,29 @@ class CreateOrderAction
         ]);
 
         return $customer->id;
+    }
+
+    private function resolvePaymentStatus(float $total, float $downPayment): string
+    {
+        if ($downPayment <= 0) {
+            return 'paid';
+        }
+
+        if ($downPayment >= $total) {
+            return 'paid';
+        }
+
+        return 'dp';
+    }
+
+    private function resolveShippingFee(array $validated): float
+    {
+        if (($validated['shipping_type'] ?? 'pickup') !== 'delivery') {
+            return 0.0;
+        }
+
+        $shippingFee = (float) ($validated['shipping_fee'] ?? 0);
+
+        return max(0, $shippingFee);
     }
 }

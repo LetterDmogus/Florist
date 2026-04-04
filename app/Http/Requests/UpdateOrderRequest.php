@@ -21,6 +21,7 @@ class UpdateOrderRequest extends FormRequest
             'shipping_date' => ['sometimes', 'required', 'date'],
             'shipping_time' => ['sometimes', 'required', 'date_format:H:i'],
             'shipping_type' => ['sometimes', 'required', Rule::in(['delivery', 'pickup'])],
+            'shipping_fee' => ['nullable', 'numeric', 'min:0'],
             'down_payment' => ['nullable', 'numeric', 'min:0'],
             'payment_status' => ['sometimes', 'required', Rule::in(['unpaid', 'dp', 'paid'])],
             'order_status' => ['sometimes', 'required', Rule::in(Order::ORDER_STATUSES)],

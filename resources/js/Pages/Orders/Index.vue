@@ -37,6 +37,13 @@ const props = defineProps({
 const today = new Date().toISOString().slice(0, 10);
 const nowTime = new Date().toTimeString().slice(0, 5);
 const LOOKUP_LIMIT = 8;
+const createRequestId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+
+    return `req-${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+};
 
 const catalogMode = ref('catalog');
 const catalogSearch = ref(props.catalogFilters?.search || '');
@@ -74,6 +81,7 @@ const onCustomImageChange = (e) => {
 };
 
 const form = useForm({
+    request_id: createRequestId(),
     customer_mode: 'existing',
     customer_id: '',
     new_customer_name: '',
@@ -81,6 +89,7 @@ const form = useForm({
     shipping_date: today,
     shipping_time: nowTime,
     shipping_type: 'delivery',
+    shipping_fee: '',
     delivery_mode: 'new',
     delivery_id: '',
     delivery_recipient_name: '',
@@ -133,6 +142,54 @@ const selectedDelivery = computed(() => {
 
 const cartTotal = computed(() => {
     return cartItems.value.reduce((total, item) => total + lineTotal(item), 0);
+});
+
+const shippingFeeAmount = computed(() => {
+    if (form.shipping_type !== 'delivery') {
+        return 0;
+    }
+
+    const value = Number(form.shipping_fee ?? 0);
+
+    return Number.isFinite(value) && value > 0 ? value : 0;
+});
+
+const orderGrandTotal = computed(() => {
+    return cartTotal.value + shippingFeeAmount.value;
+});
+
+const downPaymentAmount = computed(() => {
+    const value = Number(form.down_payment ?? 0);
+
+    return Number.isFinite(value) && value > 0 ? value : 0;
+});
+
+const maxDownPayment = computed(() => {
+    return Math.max(0, cartTotal.value);
+});
+
+const remainingPayment = computed(() => {
+    if (downPaymentAmount.value <= 0) {
+        return 0;
+    }
+
+    return Math.max(0, orderGrandTotal.value - downPaymentAmount.value);
+});
+
+const paymentStatusPreview = computed(() => {
+    if (orderGrandTotal.value <= 0) {
+        return 'Belum Bayar';
+    }
+
+    if (downPaymentAmount.value <= 0) {
+        return 'Lunas';
+    }
+
+    if (downPaymentAmount.value >= orderGrandTotal.value) {
+        return 'Lunas';
+    }
+
+    return 'DP';
 });
 
 const lineTotal = (item) => {
@@ -214,7 +271,7 @@ const removeCartItem = (cartId) => {
 };
 
 const applyCatalogFilters = () => {
-    router.get(route('orders.index'), {
+    router.get(route('cashier.index'), {
         catalog_search: catalogSearch.value || '',
         catalog_category_id: selectedCategoryId.value || '',
         catalog_page: 1,
@@ -327,6 +384,10 @@ const debouncedFetchCustomerOptions = debounce(fetchCustomerOptions, 300);
 const debouncedFetchDeliveryOptions = debounce(fetchDeliveryOptions, 300);
 
 const submitOrder = () => {
+    if (!form.request_id) {
+        form.request_id = createRequestId();
+    }
+
     form.customer_mode = customerMode.value;
     form.delivery_mode = deliveryMode.value;
 
@@ -339,6 +400,7 @@ const submitOrder = () => {
 
     if (form.shipping_type !== 'delivery') {
         form.delivery_mode = 'new';
+        form.shipping_fee = '';
         form.delivery_id = '';
         form.delivery_recipient_name = '';
         form.delivery_recipient_phone = '';
@@ -377,6 +439,7 @@ const submitOrder = () => {
                 'customer_id',
                 'new_customer_name',
                 'new_customer_phone_number',
+                'shipping_fee',
                 'delivery_mode',
                 'delivery_id',
                 'delivery_recipient_name',
@@ -389,6 +452,7 @@ const submitOrder = () => {
             form.shipping_date = today;
             form.shipping_time = new Date().toTimeString().slice(0, 5);
             form.shipping_type = 'delivery';
+            form.request_id = createRequestId();
             customerMode.value = 'existing';
             customerSearch.value = '';
             customerOptions.value = [];
@@ -447,6 +511,7 @@ watch(() => form.shipping_type, (shippingType) => {
 
     deliveryMode.value = 'new';
     deliverySearch.value = '';
+    form.shipping_fee = '';
     form.delivery_id = '';
     form.delivery_recipient_name = '';
     form.delivery_recipient_phone = '';
@@ -868,6 +933,18 @@ watch(
                             <InputError :message="form.errors.shipping_type" class="mt-1" />
 
                             <div v-if="form.shipping_type === 'delivery'" class="mt-3 space-y-2 rounded-2xl border border-pink-200 bg-pink-50/50 p-3">
+                                <div>
+                                    <label class="mb-1 block text-xs font-medium text-pink-800">Ongkir</label>
+                                    <input
+                                        v-model="form.shipping_fee"
+                                        type="number"
+                                        min="0"
+                                        class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300"
+                                        placeholder="0"
+                                    >
+                                    <InputError :message="form.errors.shipping_fee" class="mt-1" />
+                                </div>
+
                                 <div class="inline-flex rounded-xl border border-pink-200 bg-white p-1">
                                     <BaseButton
                                         :variant="deliveryMode === 'existing' ? 'primary' : 'ghost'"
@@ -983,9 +1060,17 @@ watch(
                                 v-model="form.down_payment"
                                 type="number"
                                 min="0"
+                                :max="maxDownPayment > 0 ? maxDownPayment : null"
                                 class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300"
                                 placeholder="0"
                             >
+                            <p class="mt-1 text-[11px] text-pink-700">
+                                Status pembayaran: <span class="font-semibold">{{ paymentStatusPreview }}</span>
+                                <span v-if="orderGrandTotal > 0"> • Sisa bayar: <span class="font-semibold">{{ formatCurrency(remainingPayment) }}</span></span>
+                            </p>
+                            <p class="mt-1 text-[11px] text-pink-700">
+                                Maksimal DP: <span class="font-semibold">{{ formatCurrency(maxDownPayment) }}</span> (subtotal item).
+                            </p>
                             <InputError :message="form.errors.down_payment" class="mt-1" />
                         </div>
                     </div>
@@ -1052,9 +1137,27 @@ watch(
                     <InputError :message="form.errors['details.0.mode']" />
 
                     <div class="rounded-2xl bg-pink-100/80 p-4">
-                        <div class="flex items-center justify-between text-sm text-pink-800">
-                            <span>Total</span>
-                            <span class="text-xl font-bold text-pink-950">{{ formatCurrency(cartTotal) }}</span>
+                        <div class="space-y-2 text-sm text-pink-800">
+                            <div class="flex items-center justify-between">
+                                <span>Subtotal Item</span>
+                                <span class="text-xl font-bold text-pink-950">{{ formatCurrency(cartTotal) }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>Ongkir</span>
+                                <span class="font-semibold text-pink-900">{{ formatCurrency(shippingFeeAmount) }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>Total</span>
+                                <span class="font-semibold text-pink-900">{{ formatCurrency(orderGrandTotal) }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>DP</span>
+                                <span class="font-semibold text-pink-900">{{ formatCurrency(downPaymentAmount) }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>Sisa Bayar</span>
+                                <span class="font-semibold text-pink-900">{{ formatCurrency(remainingPayment) }}</span>
+                            </div>
                         </div>
                     </div>
 

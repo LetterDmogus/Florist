@@ -265,6 +265,152 @@ class OrderStatusManagementTest extends TestCase
             ->assertStatus(429);
     }
 
+    public function test_admin_cannot_move_dp_order_to_completed_before_paid(): void
+    {
+        $admin = User::factory()->create();
+        $this->assignRole($admin, 'admin');
+
+        $customer = Customer::create([
+            'name' => 'Status Customer DP',
+            'phone_number' => '081200007777',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $admin->id,
+            'customer_id' => $customer->id,
+            'total' => 250000,
+            'shipping_date' => '2026-03-31',
+            'shipping_time' => '13:00',
+            'shipping_type' => 'pickup',
+            'down_payment' => 100000,
+            'payment_status' => 'dp',
+            'order_status' => 'ready',
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->from(route('orders.status.index'))
+            ->patch(route('orders.status.update', $order), [
+                'order_status' => 'completed',
+            ]);
+
+        $response->assertRedirect(route('orders.status.index'));
+        $response->assertSessionHasErrors('order_status');
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'order_status' => 'ready',
+            'payment_status' => 'dp',
+        ]);
+    }
+
+    public function test_admin_cannot_move_unpaid_order_to_completed_before_paid(): void
+    {
+        $admin = User::factory()->create();
+        $this->assignRole($admin, 'admin');
+
+        $customer = Customer::create([
+            'name' => 'Status Customer Unpaid',
+            'phone_number' => '081200008888',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $admin->id,
+            'customer_id' => $customer->id,
+            'total' => 200000,
+            'shipping_date' => '2026-03-31',
+            'shipping_time' => '14:00',
+            'shipping_type' => 'pickup',
+            'payment_status' => 'unpaid',
+            'order_status' => 'ready',
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->from(route('orders.status.index'))
+            ->patch(route('orders.status.update', $order), [
+                'order_status' => 'completed',
+            ]);
+
+        $response->assertRedirect(route('orders.status.index'));
+        $response->assertSessionHasErrors('order_status');
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'order_status' => 'ready',
+            'payment_status' => 'unpaid',
+        ]);
+    }
+
+    public function test_admin_can_mark_payment_status_as_paid(): void
+    {
+        $admin = User::factory()->create();
+        $this->assignRole($admin, 'admin');
+
+        $customer = Customer::create([
+            'name' => 'Status Customer Paid',
+            'phone_number' => '081200009999',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $admin->id,
+            'customer_id' => $customer->id,
+            'total' => 275000,
+            'shipping_date' => '2026-03-31',
+            'shipping_time' => '15:00',
+            'shipping_type' => 'pickup',
+            'down_payment' => 100000,
+            'payment_status' => 'dp',
+            'order_status' => 'ready',
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->patch(route('orders.payment-status.update', $order), [
+                'payment_status' => 'paid',
+            ]);
+
+        $response->assertRedirect();
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'payment_status' => 'paid',
+        ]);
+    }
+
+    public function test_admin_cannot_set_completed_order_payment_back_to_unpaid(): void
+    {
+        $admin = User::factory()->create();
+        $this->assignRole($admin, 'admin');
+
+        $customer = Customer::create([
+            'name' => 'Status Customer Completed',
+            'phone_number' => '081200001010',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $admin->id,
+            'customer_id' => $customer->id,
+            'total' => 300000,
+            'shipping_date' => '2026-03-31',
+            'shipping_time' => '16:00',
+            'shipping_type' => 'pickup',
+            'payment_status' => 'paid',
+            'order_status' => 'completed',
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->from(route('orders.status.index'))
+            ->patch(route('orders.payment-status.update', $order), [
+                'payment_status' => 'unpaid',
+            ]);
+
+        $response->assertRedirect(route('orders.status.index'));
+        $response->assertSessionHasErrors('payment_status');
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'payment_status' => 'paid',
+        ]);
+    }
+
     private function assignRole(User $user, string $roleName): void
     {
         $role = Role::create([

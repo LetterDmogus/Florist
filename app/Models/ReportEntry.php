@@ -36,6 +36,7 @@ class ReportEntry extends Model
 
     protected $fillable = [
         'user_id',
+        'order_id',
         'occurred_on',
         'category',
         'description',
@@ -69,6 +70,11 @@ class ReportEntry extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
     }
 
     public function resolveAmountIdr(): float

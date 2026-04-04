@@ -26,6 +26,7 @@ const props = defineProps({
 });
 
 const updatingOrderId = ref(null);
+const updatingPaymentOrderId = ref(null);
 const search = ref(props.filters?.search ?? '');
 const detailOrderId = ref(null);
 const sortBy = ref(props.filters?.sort_by ?? 'created_at');
@@ -110,6 +111,16 @@ const formatOrderStatus = (status) => {
     return statusLabelMap.value[status] ?? status;
 };
 
+const formatPaymentStatus = (status) => {
+    const labels = {
+        unpaid: 'Belum Bayar',
+        dp: 'DP',
+        paid: 'Lunas',
+    };
+
+    return labels[status] ?? status;
+};
+
 const filterOrdersByStatus = (status) => {
     router.get(route('orders.status.index'), {
         order_status: status || '',
@@ -155,6 +166,12 @@ const getNextStatus = (status, shippingType = 'pickup') => {
     return statusValues.value[index + 1] ?? null;
 };
 
+const isBlockedByPayment = (order) => {
+    const nextStatus = getNextStatus(order.order_status, order.shipping_type);
+
+    return nextStatus === 'completed' && order.payment_status !== 'paid';
+};
+
 const getFinalStatus = () => {
     return statusValues.value[statusValues.value.length - 1] ?? null;
 };
@@ -184,10 +201,37 @@ const stepOrderStatus = (order) => {
     });
 };
 
+const markOrderAsPaid = (order) => {
+    if (order.payment_status === 'paid') {
+        return;
+    }
+
+    updatingPaymentOrderId.value = order.id;
+
+    router.patch(route('orders.payment-status.update', order.id), {
+        payment_status: 'paid',
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus'],
+        onFinish: () => {
+            updatingPaymentOrderId.value = null;
+        },
+    });
+};
+
 const getNextStatusLabel = (status, shippingType = 'pickup') => {
     const next = getNextStatus(status, shippingType);
 
     return next ? formatOrderStatus(next) : '';
+};
+
+const getActionLabel = (order) => {
+    if (isBlockedByPayment(order)) {
+        return 'Lunasi Dulu';
+    }
+
+    return getNextStatusLabel(order.order_status, order.shipping_type);
 };
 
 const selectedOrder = computed(() => {
@@ -341,7 +385,9 @@ watch(
                                         <ArrowUpDown v-else class="w-3 h-3 opacity-20" />
                                     </div>
                                 </th>
+                                <th class="px-3 py-2">Ongkir</th>
                                 <th class="px-3 py-2">Status</th>
+                                <th class="px-3 py-2">Pembayaran</th>
                                 <th class="px-3 py-2">Detail</th>
                                 <th v-if="canManageOrderStatus" class="px-3 py-2">Atur Status</th>
                             </tr>
@@ -352,9 +398,22 @@ watch(
                                 <td class="px-3 py-2 text-pink-800">{{ formatShippingDate(order.shipping_date) }} {{ formatShippingTime(order.shipping_time) }}</td>
                                 <td class="px-3 py-2 capitalize text-pink-800">{{ order.shipping_type }}</td>
                                 <td class="px-3 py-2 font-semibold text-pink-900">{{ formatCurrency(order.total) }}</td>
+                                <td class="px-3 py-2 text-pink-800">{{ formatCurrency(order.shipping_fee ?? 0) }}</td>
                                 <td class="px-3 py-2">
                                     <span class="rounded-lg bg-pink-100 px-2 py-1 text-xs font-semibold text-pink-700">
                                         {{ formatOrderStatus(order.order_status) }}
+                                    </span>
+                                </td>
+                                <td class="px-3 py-2">
+                                    <span
+                                        class="rounded-lg px-2 py-1 text-xs font-semibold"
+                                        :class="order.payment_status === 'paid'
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : order.payment_status === 'dp'
+                                                ? 'bg-amber-100 text-amber-700'
+                                                : 'bg-slate-100 text-slate-700'"
+                                    >
+                                        {{ formatPaymentStatus(order.payment_status) }}
                                     </span>
                                 </td>
                                 <td class="px-3 py-2">
@@ -381,18 +440,27 @@ watch(
                                 <td v-if="canManageOrderStatus" class="px-3 py-2">
                                     <div class="flex items-center gap-2">
                                         <button
+                                            v-if="order.payment_status !== 'paid'"
+                                            type="button"
+                                            class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                            :disabled="updatingPaymentOrderId === order.id"
+                                            @click="markOrderAsPaid(order)"
+                                        >
+                                            {{ updatingPaymentOrderId === order.id ? 'Saving...' : 'Tandai Lunas' }}
+                                        </button>
+                                        <button
                                             type="button"
                                             class="rounded-lg bg-pink-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                            :disabled="updatingOrderId === order.id || !getNextStatus(order.order_status, order.shipping_type)"
+                                            :disabled="updatingOrderId === order.id || !getNextStatus(order.order_status, order.shipping_type) || isBlockedByPayment(order)"
                                             @click="stepOrderStatus(order)"
                                         >
-                                            {{ updatingOrderId === order.id ? 'Saving...' : getNextStatusLabel(order.order_status, order.shipping_type) }}
+                                            {{ updatingOrderId === order.id ? 'Saving...' : getActionLabel(order) }}
                                         </button>
                                     </div>
                                 </td>
                             </tr>
                             <tr v-if="orders.data.length === 0">
-                                <td :colspan="canManageOrderStatus ? 7 : 6" class="px-3 py-6 text-center text-sm text-pink-700">Belum ada order.</td>
+                                <td :colspan="canManageOrderStatus ? 9 : 8" class="px-3 py-6 text-center text-sm text-pink-700">Belum ada order.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -437,12 +505,16 @@ watch(
                         <p class="mt-1 text-sm font-bold text-pink-950">{{ formatCurrency(selectedOrder.total) }}</p>
                     </div>
                     <div class="rounded-xl bg-pink-50 p-3">
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-pink-600">Ongkir</p>
+                        <p class="mt-1 text-sm font-bold text-pink-950">{{ formatCurrency(selectedOrder.shipping_fee ?? 0) }}</p>
+                    </div>
+                    <div class="rounded-xl bg-pink-50 p-3">
                         <p class="text-[11px] font-semibold uppercase tracking-wide text-pink-600">Status</p>
                         <p class="mt-1 text-sm font-bold text-pink-950">{{ formatOrderStatus(selectedOrder.order_status) }}</p>
                     </div>
                     <div class="rounded-xl bg-pink-50 p-3">
                         <p class="text-[11px] font-semibold uppercase tracking-wide text-pink-600">Payment</p>
-                        <p class="mt-1 text-sm font-bold capitalize text-pink-950">{{ selectedOrder.payment_status }}</p>
+                        <p class="mt-1 text-sm font-bold text-pink-950">{{ formatPaymentStatus(selectedOrder.payment_status) }}</p>
                     </div>
                 </div>
 

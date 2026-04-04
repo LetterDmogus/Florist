@@ -38,26 +38,26 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Two-factor Confirmation" />
+    <Head title="Konfirmasi Dua Faktor" />
 
     <AuthenticationCard>
         <template #logo>
             <AuthenticationCardLogo />
         </template>
 
-        <div class="mb-4 text-sm text-gray-600">
+        <div class="mb-4 text-sm text-pink-900/60">
             <template v-if="! recovery">
-                Please confirm access to your account by entering the authentication code provided by your authenticator application.
+                Silakan konfirmasi akses ke akun Anda dengan memasukkan kode autentikasi yang disediakan oleh aplikasi autentikator Anda.
             </template>
 
             <template v-else>
-                Please confirm access to your account by entering one of your emergency recovery codes.
+                Silakan konfirmasi akses ke akun Anda dengan memasukkan salah satu kode pemulihan darurat Anda.
             </template>
         </div>
 
         <form @submit.prevent="submit">
             <div v-if="! recovery">
-                <InputLabel for="code" value="Code" />
+                <InputLabel for="code" value="Kode" />
                 <TextInput
                     id="code"
                     ref="codeInput"
@@ -72,7 +72,7 @@ const submit = () => {
             </div>
 
             <div v-else>
-                <InputLabel for="recovery_code" value="Recovery Code" />
+                <InputLabel for="recovery_code" value="Kode Pemulihan" />
                 <TextInput
                     id="recovery_code"
                     ref="recoveryCodeInput"
@@ -85,18 +85,18 @@ const submit = () => {
             </div>
 
             <div class="flex items-center justify-end mt-4">
-                <button type="button" class="text-sm text-gray-600 hover:text-gray-900 underline cursor-pointer" @click.prevent="toggleRecovery">
+                <button type="button" class="text-sm text-pink-700 hover:text-pink-950 underline cursor-pointer" @click.prevent="toggleRecovery">
                     <template v-if="! recovery">
-                        Use a recovery code
+                        Gunakan kode pemulihan
                     </template>
 
                     <template v-else>
-                        Use an authentication code
+                        Gunakan kode autentikasi
                     </template>
                 </button>
 
                 <PrimaryButton class="ms-4" :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    Log in
+                    Masuk
                 </PrimaryButton>
             </div>
         </form>

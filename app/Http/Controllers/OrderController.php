@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Actions\CreateOrderAction;
+use App\Actions\SyncOrderShippingExpenseAction;
 use App\Http\Requests\StoreOrderRequest;
 use App\Http\Requests\UpdateOrderRequest;
 use App\Models\BouquetCategory;
@@ -21,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -48,9 +50,10 @@ class OrderController extends Controller
 
     public function index(Request $request): Response
     {
+        $perPage = $this->resolvePerPage($request);
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
-            ['id', 'customer_id', 'total', 'shipping_date', 'shipping_time', 'shipping_type', 'payment_status', 'order_status', 'created_at', 'updated_at'],
+            ['id', 'customer_id', 'total', 'shipping_fee', 'shipping_date', 'shipping_time', 'shipping_type', 'payment_status', 'order_status', 'created_at', 'updated_at'],
             'created_at',
             'desc',
         );
@@ -69,25 +72,27 @@ class OrderController extends Controller
             ->when($request->date_from, fn ($q) => $q->whereDate('shipping_date', '>=', $request->date_from))
             ->when($request->date_to, fn ($q) => $q->whereDate('shipping_date', '<=', $request->date_to))
             ->orderBy($sortBy, $sortDir)
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
         return Inertia::render('Orders/Index', [
             'orders' => $orders,
-            'filters' => $request->only('search', 'payment_status', 'order_status', 'shipping_type', 'date_from', 'date_to', 'sort_by', 'sort_dir'),
+            'filters' => [
+                ...$request->only('search', 'payment_status', 'order_status', 'shipping_type', 'date_from', 'date_to', 'sort_by', 'sort_dir'),
+                'per_page' => $perPage,
+            ],
             ...$this->cashierPayload($request),
         ]);
     }
 
     public function statusIndex(Request $request): Response
     {
-        abort_unless($request->user()?->hasAnyRole(['super-admin', 'admin']), 403);
-
+        $perPage = $this->resolvePerPage($request);
         $orderStatusFilter = $this->normalizeOrderStatusFilter((string) $request->string('order_status')->toString());
         $search = trim((string) $request->string('search')->toString());
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
-            ['id', 'customer_id', 'total', 'shipping_date', 'shipping_time', 'shipping_type', 'payment_status', 'order_status', 'created_at', 'updated_at'],
+            ['id', 'customer_id', 'total', 'shipping_fee', 'shipping_date', 'shipping_time', 'shipping_type', 'payment_status', 'order_status', 'created_at', 'updated_at'],
             'created_at',
             'desc',
         );
@@ -114,7 +119,7 @@ class OrderController extends Controller
             })
             ->when($orderStatusFilter !== '', fn ($q) => $q->where('order_status', $orderStatusFilter))
             ->orderBy($sortBy, $sortDir)
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
         return Inertia::render('Orders/Status', [
@@ -124,9 +129,10 @@ class OrderController extends Controller
                 'search' => $search,
                 'sort_by' => $sortBy,
                 'sort_dir' => $sortDir,
+                'per_page' => $perPage,
             ],
             'orderStatusSummary' => $this->buildOrderStatusSummary(),
-            'canManageOrderStatus' => true,
+            'canManageOrderStatus' => (bool) $request->user()?->can('orders.status.update'),
         ]);
     }
 
@@ -247,7 +253,46 @@ class OrderController extends Controller
     {
         abort_unless($request->user()?->can('orders.create'), 403);
 
-        $order->update($request->validated());
+        $validated = $request->validated();
+
+        DB::transaction(function () use ($order, $validated, $request): void {
+            /** @var Order $lockedOrder */
+            $lockedOrder = Order::query()
+                ->whereKey($order->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $nextShippingType = (string) ($validated['shipping_type'] ?? $lockedOrder->shipping_type);
+            $shippingFee = $nextShippingType === 'delivery'
+                ? max(0, (float) ($validated['shipping_fee'] ?? $lockedOrder->shipping_fee ?? 0))
+                : 0.0;
+
+            $lockedOrder->fill([
+                ...$validated,
+                'shipping_fee' => $shippingFee,
+            ]);
+
+            $itemsSubtotal = (float) $lockedOrder->orderDetails()->sum('subtotal');
+
+            if ((float) ($lockedOrder->down_payment ?? 0) > $itemsSubtotal) {
+                throw ValidationException::withMessages([
+                    'down_payment' => 'Down payment tidak boleh lebih besar dari subtotal item.',
+                ]);
+            }
+
+            $lockedOrder->total = round($itemsSubtotal + $shippingFee, 2);
+
+            if (! array_key_exists('payment_status', $validated)) {
+                $lockedOrder->payment_status = $this->resolvePaymentStatus(
+                    (float) $lockedOrder->total,
+                    (float) ($lockedOrder->down_payment ?? 0),
+                );
+            }
+
+            $lockedOrder->save();
+
+            app(SyncOrderShippingExpenseAction::class)->handle($lockedOrder, $request->user()->id);
+        });
 
         return redirect()->route('orders.show', $order)
             ->with('success', 'Order berhasil diperbarui.');
@@ -257,7 +302,10 @@ class OrderController extends Controller
     {
         abort_unless($request->user()?->can('orders.delete'), 403);
 
-        $order->delete();
+        DB::transaction(function () use ($order, $request): void {
+            $order->delete();
+            app(SyncOrderShippingExpenseAction::class)->handle($order, $request->user()->id);
+        });
 
         return redirect()->route('orders.index')
             ->with('success', 'Order berhasil dihapus.');
@@ -265,7 +313,7 @@ class OrderController extends Controller
 
     public function updateStatus(Request $request, Order $order): RedirectResponse
     {
-        abort_unless($request->user()?->hasAnyRole(['super-admin', 'admin']), 403);
+        abort_unless($request->user()?->can('orders.status.update'), 403);
 
         $validated = $request->validate([
             'order_status' => ['required', Rule::in(Order::ORDER_STATUSES)],
@@ -280,6 +328,7 @@ class OrderController extends Controller
 
             $currentStatus = (string) $lockedOrder->order_status;
             $shippingType = (string) $lockedOrder->shipping_type;
+            $paymentStatus = (string) $lockedOrder->payment_status;
 
             if (! Order::canTransition($currentStatus, $targetStatus, $shippingType)) {
                 $allowedNext = Order::allowedNextStatuses($currentStatus, $shippingType);
@@ -301,9 +350,30 @@ class OrderController extends Controller
                 ];
             }
 
+            if ($targetStatus === 'completed' && $paymentStatus !== 'paid') {
+                return [
+                    'ok' => false,
+                    'error_message' => 'Order harus dilunasi terlebih dahulu sebelum dipindah ke History.',
+                ];
+            }
+
             $lockedOrder->update([
                 'order_status' => $targetStatus,
             ]);
+
+            // If order completed, disable custom bouquets
+            if ($targetStatus === 'completed') {
+                $lockedOrder->orderDetails()
+                    ->where('item_type', 'bouquet')
+                    ->whereNotNull('bouquet_unit_id')
+                    ->get()
+                    ->each(function (OrderDetail $detail) {
+                        $unit = $detail->bouquetUnit;
+                        if ($unit && $unit->type && $unit->type->is_custom) {
+                            $unit->update(['is_active' => false]);
+                        }
+                    });
+            }
 
             activity('orders')
                 ->causedBy($request->user())
@@ -323,6 +393,13 @@ class OrderController extends Controller
         });
 
         if (! ($result['ok'] ?? false)) {
+            if (! empty($result['error_message'])) {
+                return redirect()->back()
+                    ->withErrors([
+                        'order_status' => (string) $result['error_message'],
+                    ]);
+            }
+
             $allowed = $result['allowed_labels'] ?? [];
             $allowedText = empty($allowed) ? 'Tidak ada transisi lanjutan.' : implode(' atau ', $allowed);
 
@@ -334,6 +411,78 @@ class OrderController extends Controller
 
         return redirect()->back()
             ->with('success', ($result['changed'] ?? false) ? 'Status order berhasil diperbarui.' : 'Status order tidak berubah.');
+    }
+
+    public function updatePaymentStatus(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($request->user()?->can('orders.status.update'), 403);
+
+        $validated = $request->validate([
+            'payment_status' => ['required', Rule::in(['unpaid', 'dp', 'paid'])],
+        ]);
+
+        $targetStatus = (string) $validated['payment_status'];
+        $result = DB::transaction(function () use ($order, $targetStatus, $request): array {
+            $lockedOrder = Order::query()
+                ->whereKey($order->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $currentStatus = (string) $lockedOrder->payment_status;
+            $orderStatus = (string) $lockedOrder->order_status;
+            $downPayment = (float) ($lockedOrder->down_payment ?? 0);
+            $total = (float) ($lockedOrder->total ?? 0);
+
+            if ($currentStatus === $targetStatus) {
+                return [
+                    'ok' => true,
+                    'changed' => false,
+                ];
+            }
+
+            if ($targetStatus === 'dp' && ($downPayment <= 0 || $downPayment >= $total)) {
+                return [
+                    'ok' => false,
+                    'error_message' => 'Status DP hanya bisa dipakai jika DP lebih dari 0 dan kurang dari total order.',
+                ];
+            }
+
+            if ($orderStatus === 'completed' && $targetStatus !== 'paid') {
+                return [
+                    'ok' => false,
+                    'error_message' => 'Order history yang sudah selesai hanya boleh berstatus pembayaran Lunas.',
+                ];
+            }
+
+            $lockedOrder->update([
+                'payment_status' => $targetStatus,
+            ]);
+
+            activity('orders')
+                ->causedBy($request->user())
+                ->performedOn($lockedOrder)
+                ->event('payment_status_updated')
+                ->withProperties([
+                    'old_status' => $currentStatus,
+                    'new_status' => $targetStatus,
+                ])
+                ->log('order.payment_status_updated');
+
+            return [
+                'ok' => true,
+                'changed' => true,
+            ];
+        });
+
+        if (! ($result['ok'] ?? false)) {
+            return redirect()->back()
+                ->withErrors([
+                    'payment_status' => (string) ($result['error_message'] ?? 'Status pembayaran tidak valid.'),
+                ]);
+        }
+
+        return redirect()->back()
+            ->with('success', ($result['changed'] ?? false) ? 'Status pembayaran berhasil diperbarui.' : 'Status pembayaran tidak berubah.');
     }
 
     // ─── Order Detail Methods ─────────────────────────────────────────────────
@@ -360,10 +509,24 @@ class OrderController extends Controller
         }
 
         DB::transaction(function () use ($order, $validated, $subtotal): void {
-            $order->orderDetails()->create([...$validated, 'subtotal' => $subtotal]);
+            /** @var Order $lockedOrder */
+            $lockedOrder = Order::query()
+                ->whereKey($order->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-            // Recalculate order total
-            $order->update(['total' => $order->orderDetails()->sum('subtotal')]);
+            $lockedOrder->orderDetails()->create([...$validated, 'subtotal' => $subtotal]);
+
+            $itemsSubtotal = (float) $lockedOrder->orderDetails()->sum('subtotal');
+            if ((float) ($lockedOrder->down_payment ?? 0) > $itemsSubtotal) {
+                throw ValidationException::withMessages([
+                    'down_payment' => 'Down payment tidak boleh lebih besar dari subtotal item.',
+                ]);
+            }
+
+            $lockedOrder->update([
+                'total' => round($itemsSubtotal + (float) ($lockedOrder->shipping_fee ?? 0), 2),
+            ]);
         });
 
         return redirect()->route('orders.show', $order)
@@ -375,10 +538,30 @@ class OrderController extends Controller
         abort_unless($request->user()?->can('orders.delete'), 403);
 
         DB::transaction(function () use ($order, $orderDetail): void {
-            $orderDetail->delete();
+            /** @var Order $lockedOrder */
+            $lockedOrder = Order::query()
+                ->whereKey($order->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-            // Recalculate order total
-            $order->update(['total' => $order->orderDetails()->sum('subtotal')]);
+            $lockedDetail = OrderDetail::query()
+                ->whereKey($orderDetail->id)
+                ->where('order_id', $lockedOrder->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $lockedDetail->delete();
+
+            $itemsSubtotal = (float) $lockedOrder->orderDetails()->sum('subtotal');
+            if ((float) ($lockedOrder->down_payment ?? 0) > $itemsSubtotal) {
+                throw ValidationException::withMessages([
+                    'down_payment' => 'Down payment tidak boleh lebih besar dari subtotal item.',
+                ]);
+            }
+
+            $lockedOrder->update([
+                'total' => round($itemsSubtotal + (float) ($lockedOrder->shipping_fee ?? 0), 2),
+            ]);
         });
 
         return redirect()->route('orders.show', $order)
@@ -411,7 +594,8 @@ class OrderController extends Controller
         }
 
         $bouquetUnits = BouquetUnit::query()
-            ->with('type.category')
+            ->with(['type.category', 'media'])
+            ->where('is_active', true)
             ->when($catalogSearch !== '', function ($query) use ($catalogSearch): void {
                 $query->where(function ($builder) use ($catalogSearch): void {
                     $builder
@@ -445,6 +629,19 @@ class OrderController extends Controller
             'deliveryReferences' => [],
             'canCustomBouquet' => (bool) $request->user()?->can('input custom bouquet'),
         ];
+    }
+
+    private function resolvePaymentStatus(float $total, float $downPayment): string
+    {
+        if ($downPayment <= 0) {
+            return 'paid';
+        }
+
+        if ($downPayment >= $total) {
+            return 'paid';
+        }
+
+        return 'dp';
     }
 
     private function normalizeOrderStatusFilter(string $status): string

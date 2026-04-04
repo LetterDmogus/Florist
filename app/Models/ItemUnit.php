@@ -47,7 +47,13 @@ class ItemUnit extends Model implements HasMedia
 
     public function getImageUrlAttribute(): ?string
     {
-        return $this->getFirstMediaUrl('images');
+        if (! $this->relationLoaded('media')) {
+            return null;
+        }
+
+        $media = $this->media->first(fn ($item) => $item->collection_name === 'images');
+
+        return $media?->getFullUrl();
     }
 
     public function category(): BelongsTo

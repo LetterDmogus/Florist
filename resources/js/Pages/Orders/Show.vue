@@ -64,6 +64,17 @@ const detailRows = computed(() => {
 const orderStatusLabel = computed(() => {
     return props.orderStatusLabels?.[props.order.order_status] ?? props.order.order_status;
 });
+
+const remainingPayment = computed(() => {
+    const total = Number(props.order.total ?? 0);
+    const downPayment = Number(props.order.down_payment ?? 0);
+
+    if (props.order.payment_status === 'paid' && downPayment <= 0) {
+        return 0;
+    }
+
+    return Math.max(0, total - downPayment);
+});
 </script>
 
 <template>
@@ -89,6 +100,21 @@ const orderStatusLabel = computed(() => {
                     <div class="rounded-2xl bg-pink-50 p-3">
                         <p class="text-xs uppercase tracking-wide text-pink-600">Order Status</p>
                         <p class="mt-1 text-lg font-bold text-pink-950">{{ orderStatusLabel }}</p>
+                    </div>
+                </div>
+
+                <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                    <div class="rounded-2xl bg-pink-50 p-3">
+                        <p class="text-xs uppercase tracking-wide text-pink-600">Ongkir</p>
+                        <p class="mt-1 text-lg font-bold text-pink-950">{{ formatCurrency(order.shipping_fee ?? 0) }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-pink-50 p-3">
+                        <p class="text-xs uppercase tracking-wide text-pink-600">Down Payment</p>
+                        <p class="mt-1 text-lg font-bold text-pink-950">{{ formatCurrency(order.down_payment ?? 0) }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-pink-50 p-3">
+                        <p class="text-xs uppercase tracking-wide text-pink-600">Sisa Bayar</p>
+                        <p class="mt-1 text-lg font-bold text-pink-950">{{ formatCurrency(remainingPayment) }}</p>
                     </div>
                 </div>
             </section>

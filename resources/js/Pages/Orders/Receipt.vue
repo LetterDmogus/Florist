@@ -17,6 +17,12 @@ const formatCurrency = (value) => {
     }).format(value);
 };
 
+const itemSubtotal = () => {
+    const details = Array.isArray(props.order?.order_details) ? props.order.order_details : [];
+
+    return details.reduce((sum, item) => sum + (Number(item?.subtotal) || 0), 0);
+};
+
 const printReceipt = () => {
     window.print();
 };
@@ -99,6 +105,14 @@ const goBack = () => {
 
             <!-- Totals -->
             <div class="space-y-1">
+                <div class="flex justify-between">
+                    <span>Subtotal Item:</span>
+                    <span>{{ formatCurrency(itemSubtotal()) }}</span>
+                </div>
+                <div v-if="Number(order.shipping_fee || 0) > 0" class="flex justify-between">
+                    <span>Ongkir:</span>
+                    <span>{{ formatCurrency(order.shipping_fee) }}</span>
+                </div>
                 <div class="flex justify-between text-base font-bold">
                     <span>TOTAL</span>
                     <span>{{ formatCurrency(order.total) }}</span>

@@ -23,6 +23,7 @@ class BouquetUnit extends Model implements HasMedia
         'name',
         'description',
         'price',
+        'is_active',
     ];
 
     protected $appends = ['image_url', 'money_bouquet'];
@@ -31,6 +32,7 @@ class BouquetUnit extends Model implements HasMedia
     {
         return [
             'price' => 'decimal:2',
+            'is_active' => 'boolean',
         ];
     }
 
@@ -41,7 +43,13 @@ class BouquetUnit extends Model implements HasMedia
 
     public function getImageUrlAttribute(): ?string
     {
-        return $this->getFirstMediaUrl('images');
+        if (! $this->relationLoaded('media')) {
+            return null;
+        }
+
+        $media = $this->media->first(fn ($item) => $item->collection_name === 'images');
+
+        return $media?->getFullUrl();
     }
 
     public function getMoneyBouquetAttribute(): float

@@ -52,6 +52,7 @@ const unitForm = useForm({
     description: '',
     money_bouquet: '',
     price: '',
+    is_active: true,
     image: null,
     _method: 'POST', // For updates with files
 });
@@ -76,6 +77,7 @@ const openCreateModal = () => {
     else if (activeTab.value === 'types') typeForm.reset();
     else if (activeTab.value === 'units') {
         unitForm.reset();
+        unitForm.is_active = true;
         unitForm._method = 'POST';
     }
     showModal.value = true;
@@ -98,6 +100,7 @@ const openEditModal = (item) => {
         unitForm.description = item.description;
         unitForm.money_bouquet = item.money_bouquet ?? item.price;
         unitForm.price = item.money_bouquet ?? item.price;
+        unitForm.is_active = !!item.is_active;
         unitForm.image = null;
         unitForm._method = 'PUT';
         imagePreview.value = item.image_url;
@@ -201,6 +204,7 @@ const unitColumns = [
     { label: 'Name', key: 'name' },
     { label: 'Type', key: 'type', sortKey: 'type_id' },
     { label: 'Money Bouquet', key: 'price' },
+    { label: 'Status', key: 'is_active' },
 ];
 
 // Helper to auto-generate slug
@@ -285,6 +289,11 @@ const generateSlug = () => {
                         </template>
                         <template #cell-price="{ item }">
                             Rp {{ new Intl.NumberFormat('id-ID').format(item.money_bouquet ?? item.price) }}
+                        </template>
+                        <template #cell-is_active="{ item }">
+                            <span :class="cn('px-2 py-1 rounded-lg text-xs font-semibold', item.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')">
+                                {{ item.is_active ? 'Aktif' : 'Non-aktif' }}
+                            </span>
                         </template>
                         <template #actions="{ item }">
                             <template v-if="item.deleted_at">
@@ -505,6 +514,18 @@ const generateSlug = () => {
                                 class="mt-1 block w-full border-secondary rounded-xl shadow-sm focus:ring-primary/50"
                                 rows="3"
                             ></textarea>
+                        </div>
+                        <div class="flex items-center gap-2 bg-pink-50/50 p-4 rounded-xl border border-pink-100">
+                            <input 
+                                type="checkbox" 
+                                id="unit_is_active" 
+                                v-model="unitForm.is_active" 
+                                class="rounded-md border-pink-200 text-pink-600 focus:ring-pink-500" 
+                            />
+                            <div>
+                                <InputLabel for="unit_is_active" value="Status Aktif" class="font-bold text-pink-900" />
+                                <p class="text-xs text-pink-800/60">Non-aktifkan agar bouquet tidak muncul di pilihan kasir.</p>
+                            </div>
                         </div>
                     </template>
 

@@ -26,6 +26,7 @@ class RoleController extends Controller
 
     public function index(Request $request): Response
     {
+        $perPage = $this->resolvePerPage($request);
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
             ['name', 'created_at', 'updated_at'],
@@ -50,7 +51,7 @@ class RoleController extends Controller
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%"))
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
             ->orderBy($sortBy, $sortDir)
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString()
             ->through(fn (Role $role): array => [
                 'id' => $role->id,
@@ -63,7 +64,10 @@ class RoleController extends Controller
 
         return Inertia::render('Roles/Index', [
             'roles' => $roles,
-            'filters' => $request->only('search', 'trashed', 'sort_by', 'sort_dir'),
+            'filters' => [
+                ...$request->only('search', 'trashed', 'sort_by', 'sort_dir'),
+                'per_page' => $perPage,
+            ],
         ]);
     }
 

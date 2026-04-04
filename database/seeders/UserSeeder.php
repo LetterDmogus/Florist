@@ -12,42 +12,18 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        $password = Hash::make('password');
+        $superAdminEmail = (string) env('SEED_SUPERADMIN_EMAIL', 'super@bees.id');
+        $superAdminName = (string) env('SEED_SUPERADMIN_NAME', 'Super Admin');
+        $superAdminPassword = (string) env('SEED_SUPERADMIN_PASSWORD', 'password');
 
-        // Super Admin
-        $superAdmin = User::firstOrCreate([
-            'email' => 'super@bees.id',
+        // Seed only essential account for first login.
+        $superAdmin = User::updateOrCreate([
+            'email' => $superAdminEmail,
         ], [
-            'name' => 'Super Admin',
-            'password' => $password,
+            'name' => $superAdminName,
+            'password' => Hash::make($superAdminPassword),
+            'email_verified_at' => now(),
         ]);
         $superAdmin->assignRole('super-admin');
-
-        // Admin
-        $admin = User::firstOrCreate([
-            'email' => 'admin@bees.id',
-        ], [
-            'name' => 'Admin Bees',
-            'password' => $password,
-        ]);
-        $admin->assignRole('admin');
-
-        // Manager
-        $manager = User::firstOrCreate([
-            'email' => 'manager@bees.id',
-        ], [
-            'name' => 'Manager Bees',
-            'password' => $password,
-        ]);
-        $manager->assignRole('manager');
-
-        // Kasir
-        $kasir = User::firstOrCreate([
-            'email' => 'kasir@bees.id',
-        ], [
-            'name' => 'Kasir Bees',
-            'password' => $password,
-        ]);
-        $kasir->assignRole('kasir');
     }
 }

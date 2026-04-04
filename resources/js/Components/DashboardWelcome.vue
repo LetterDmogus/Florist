@@ -1,23 +1,45 @@
 <script setup>
-import { ShoppingBag, Users, Truck, AlertCircle, Plus, ClipboardList, Package } from 'lucide-vue-next';
+import { defineAsyncComponent, computed, ref } from 'vue';
+import { ShoppingBag, Users, Truck, AlertCircle, Plus, ClipboardList, Package, RefreshCw } from 'lucide-vue-next';
 import StatCard from '@/Components/StatCard.vue';
 import BaseButton from '@/Components/BaseButton.vue';
-import SalesChart from '@/Components/SalesChart.vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
+
+const SalesChart = defineAsyncComponent(() => import('@/Components/SalesChart.vue'));
 
 const props = defineProps({
+    stats: {
+        type: Object,
+        required: true,
+    },
     chartData: {
         type: Object,
+        required: true,
+    },
+    recentOrders: {
+        type: Array,
         required: true,
     }
 });
 
-const stats = [
-    { title: 'Pesanan Hari Ini', value: '12', icon: ShoppingBag, description: '3 pesanan sedang diproses', trend: '+15%', trendUp: true },
-    { title: 'Pelanggan Baru', value: '5', icon: Users, description: 'Minggu ini', trend: '+2', trendUp: true },
-    { title: 'Pengiriman Aktif', value: '4', icon: Truck, description: 'Selesai tepat waktu', trend: 'Sedang Berjalan', trendUp: true },
-    { title: 'Stok Menipis', value: '2', icon: AlertCircle, description: 'Perlu restok segera', trend: 'Penting', trendUp: false },
-];
+const isRefreshing = ref(false);
+
+const refreshData = () => {
+    isRefreshing.value = true;
+    router.get(route('dashboard'), { refresh: 1 }, {
+        preserveScroll: true,
+        onFinish: () => {
+            isRefreshing.value = false;
+        }
+    });
+};
+
+const statsData = computed(() => [
+    { title: 'Pesanan Hari Ini', value: props.stats.ordersToday.value, icon: ShoppingBag, description: props.stats.ordersToday.description, trend: props.stats.ordersToday.trend, trendUp: props.stats.ordersToday.trendUp },
+    { title: 'Pelanggan Baru', value: props.stats.newCustomers.value, icon: Users, description: props.stats.newCustomers.description, trend: props.stats.newCustomers.trend, trendUp: props.stats.newCustomers.trendUp },
+    { title: 'Pengiriman Aktif', value: props.stats.activeDeliveries.value, icon: Truck, description: props.stats.activeDeliveries.description, trend: props.stats.activeDeliveries.trend, trendUp: props.stats.activeDeliveries.trendUp },
+    { title: 'Stok Menipis', value: props.stats.lowStock.value, icon: AlertCircle, description: props.stats.lowStock.description, trend: props.stats.lowStock.trend, trendUp: props.stats.lowStock.trendUp },
+]);
 </script>
 
 <template>
@@ -30,15 +52,24 @@ const stats = [
                     Selamat datang di sistem manajemen Bees Fleur. Mari kita buat hari ini penuh dengan keindahan bunga dan layanan terbaik untuk pelanggan.
                 </p>
                 <div class="mt-6 flex flex-wrap gap-3">
-                    <BaseButton :href="route('orders.index')" variant="primary">
-                        <Plus class="w-5 h-5" />
-                        Buat Pesanan Baru
-                    </BaseButton>
-                    <BaseButton :href="route('stock-movements.index')" variant="secondary">
-                        <ClipboardList class="w-5 h-5" />
-                        Cek Inventori
-                    </BaseButton>
-                </div>
+                                    <BaseButton :href="route('cashier.index')" variant="primary">
+                                        <Plus class="w-5 h-5" />
+                                        Buat Pesanan Baru
+                                    </BaseButton>
+                                    <BaseButton :href="route('stock-movements.index')" variant="secondary">
+                                        <ClipboardList class="w-5 h-5" />
+                                        Cek Inventori
+                                    </BaseButton>
+                                    <BaseButton 
+                                        @click="refreshData" 
+                                        variant="secondary" 
+                                        class="bg-white/80"
+                                        :disabled="isRefreshing"
+                                    >
+                                        <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isRefreshing }" />
+                                        Perbarui Data
+                                    </BaseButton>
+                                </div>
             </div>
             
             <!-- Abstract Shapes for Vibe -->
@@ -48,7 +79,7 @@ const stats = [
 
         <!-- Quick Stats Grid -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCard v-for="(stat, index) in stats" :key="index" v-bind="stat" />
+            <StatCard v-for="(stat, index) in statsData" :key="index" v-bind="stat" />
         </div>
 
         <!-- Sales Chart -->
@@ -64,7 +95,35 @@ const stats = [
                     </Link>
                 </div>
                 <div class="bg-white rounded-3xl border border-pink-100 overflow-hidden shadow-sm">
-                    <div class="p-8 text-center text-muted-foreground/60">
+                    <div v-if="recentOrders.length > 0" class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-pink-50/50 text-pink-900 border-b border-pink-100">
+                                <tr>
+                                    <th class="px-6 py-4 text-left font-bold uppercase tracking-wider text-[10px]">Pelanggan</th>
+                                    <th class="px-6 py-4 text-left font-bold uppercase tracking-wider text-[10px]">Total</th>
+                                    <th class="px-6 py-4 text-left font-bold uppercase tracking-wider text-[10px]">Status</th>
+                                    <th class="px-6 py-4 text-right font-bold uppercase tracking-wider text-[10px]">Waktu</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-pink-50">
+                                <tr v-for="order in recentOrders" :key="order.id" class="hover:bg-pink-50/30 transition-colors">
+                                    <td class="px-6 py-4 whitespace-nowrap font-medium text-pink-950">{{ order.customer }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-pink-900">Rp {{ new Intl.NumberFormat('id-ID').format(order.total) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span :class="[
+                                            'px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide',
+                                            order.status === 'completed' ? 'bg-green-100 text-green-700' : 
+                                            order.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-pink-100 text-pink-700'
+                                        ]">
+                                            {{ order.status }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-pink-800/60 text-xs">{{ order.time }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div v-else class="p-8 text-center text-muted-foreground/60">
                         <Package class="w-12 h-12 mx-auto mb-4 text-pink-200" />
                         <p>Belum ada aktivitas pesanan baru untuk ditampilkan saat ini.</p>
                     </div>

@@ -14,6 +14,7 @@ class ActivityLogController extends Controller
 {
     public function index(Request $request): Response
     {
+        $perPage = $this->resolvePerPage($request);
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
             ['created_at', 'description', 'event', 'subject_type', 'subject_id', 'causer_id'],
@@ -29,7 +30,7 @@ class ActivityLogController extends Controller
             })
             ->when($request->causer_id, fn ($q, $causer) => $q->where('causer_id', $causer))
             ->orderBy($sortBy, $sortDir)
-            ->paginate(30)
+            ->paginate($perPage)
             ->withQueryString();
 
         $users = User::orderBy('name')->get(['id', 'name']);
@@ -37,7 +38,10 @@ class ActivityLogController extends Controller
         return Inertia::render('Logs/Index', [
             'activities' => $activities,
             'users' => $users,
-            'filters' => $request->only(['search', 'causer_id', 'sort_by', 'sort_dir']),
+            'filters' => [
+                ...$request->only(['search', 'causer_id', 'sort_by', 'sort_dir']),
+                'per_page' => $perPage,
+            ],
         ]);
     }
 }

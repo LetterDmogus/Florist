@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import VueApexCharts from 'vue3-apexcharts';
+import { ref, computed, defineAsyncComponent } from 'vue';
 import { BarChart3, LineChart, AreaChart, Calendar } from 'lucide-vue-next';
 import BaseButton from '@/Components/BaseButton.vue';
+
+const VueApexCharts = defineAsyncComponent(() => import('vue3-apexcharts'));
 
 const props = defineProps({
     chartData: {

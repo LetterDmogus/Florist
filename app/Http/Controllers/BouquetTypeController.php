@@ -17,6 +17,7 @@ class BouquetTypeController extends Controller
 {
     public function index(Request $request): Response
     {
+        $perPage = $this->resolvePerPage($request);
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
             ['name', 'category_id', 'is_custom', 'created_at', 'updated_at'],
@@ -30,7 +31,7 @@ class BouquetTypeController extends Controller
             ->when($request->has('is_custom'), fn ($q) => $q->where('is_custom', $request->boolean('is_custom')))
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
             ->orderBy($sortBy, $sortDir)
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
         $categoryOptions = BouquetCategory::orderBy('name')->get(['id', 'name']);
@@ -38,7 +39,10 @@ class BouquetTypeController extends Controller
         return Inertia::render('Bouquets/Index', [
             'types' => $types,
             'categoryOptions' => $categoryOptions,
-            'filters' => $request->only('search', 'category_id', 'is_custom', 'trashed', 'sort_by', 'sort_dir'),
+            'filters' => [
+                ...$request->only('search', 'category_id', 'is_custom', 'trashed', 'sort_by', 'sort_dir'),
+                'per_page' => $perPage,
+            ],
             'tab' => 'types',
         ]);
     }

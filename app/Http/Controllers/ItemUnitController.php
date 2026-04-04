@@ -23,6 +23,7 @@ class ItemUnitController extends Controller
 {
     public function index(Request $request): Response
     {
+        $perPage = $this->resolvePerPage($request);
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
             ['serial_number', 'name', 'price', 'individual', 'stock', 'category_id', 'created_at', 'updated_at'],
@@ -31,13 +32,13 @@ class ItemUnitController extends Controller
         );
 
         $items = ItemUnit::query()
-            ->with('category')
+            ->with(['category', 'media'])
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%")
                 ->orWhere('serial_number', 'like', "%{$request->search}%"))
             ->when($request->category_id, fn ($q) => $q->where('category_id', $request->category_id))
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
             ->orderBy($sortBy, $sortDir)
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
         $categories = ItemCategory::query()
@@ -47,7 +48,10 @@ class ItemUnitController extends Controller
         return Inertia::render('ItemUnits/Index', [
             'items' => $items,
             'categoryOptions' => $categories,
-            'filters' => $request->only('search', 'category_id', 'trashed', 'sort_by', 'sort_dir'),
+            'filters' => [
+                ...$request->only('search', 'category_id', 'trashed', 'sort_by', 'sort_dir'),
+                'per_page' => $perPage,
+            ],
             'importPreview' => $request->session()->get('item_unit_import_preview'),
             'tab' => 'units',
         ]);
@@ -55,7 +59,11 @@ class ItemUnitController extends Controller
 
     public function show(ItemUnit $itemUnit): Response
     {
-        $itemUnit->load(['category', 'stockMovements' => fn ($q) => $q->latest()->limit(20)]);
+        $itemUnit->load([
+            'category',
+            'media',
+            'stockMovements' => fn ($q) => $q->latest()->limit(20),
+        ]);
 
         return Inertia::render('ItemUnits/Show', [
             'item' => $itemUnit,

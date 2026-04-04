@@ -19,6 +19,7 @@ class UserController extends Controller
 {
     public function index(Request $request): Response
     {
+        $perPage = $this->resolvePerPage($request);
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
             ['name', 'email', 'created_at', 'updated_at'],
@@ -36,7 +37,7 @@ class UserController extends Controller
                 fn ($q) => $q->role($request->string('role')->toString())
             )
             ->orderBy($sortBy, $sortDir)
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString()
             ->through(fn (User $user): array => [
                 'id' => $user->id,
@@ -56,7 +57,10 @@ class UserController extends Controller
         return Inertia::render('Users/Index', [
             'users' => $users,
             'roles' => $roles,
-            'filters' => $request->only('search', 'role', 'trashed', 'sort_by', 'sort_dir'),
+            'filters' => [
+                ...$request->only('search', 'role', 'trashed', 'sort_by', 'sort_dir'),
+                'per_page' => $perPage,
+            ],
         ]);
     }
 

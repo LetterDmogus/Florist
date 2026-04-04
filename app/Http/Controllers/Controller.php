@@ -8,6 +8,16 @@ use Illuminate\Http\Request;
 
 abstract class Controller
 {
+    protected function resolvePerPage(Request $request, int $default = 10): int
+    {
+        $perPage = (int) $request->input('per_page', $default);
+        if (! in_array($perPage, [10, 20, 30], true)) {
+            $perPage = $default;
+        }
+
+        return $perPage;
+    }
+
     protected function resolveSort(
         Request $request,
         array $allowedColumns,

@@ -22,7 +22,7 @@ const props = defineProps({
     },
     filters: {
         type: Object,
-        default: () => ({ search: '', trashed: false, sort_by: 'created_at', sort_dir: 'desc' }),
+        default: () => ({ search: '', trashed: false, sort_by: 'created_at', sort_dir: 'desc', per_page: 10 }),
     },
     searchPlaceholder: {
         type: String,
@@ -46,6 +46,7 @@ const props = defineProps({
 const search = ref(props.filters.search || '');
 const sortBy = ref(props.filters.sort_by || 'created_at');
 const sortDir = ref(props.filters.sort_dir || 'desc');
+const perPage = ref(props.filters.per_page || 10);
 
 const parseTrashedFilter = (value) => {
     if (typeof value === 'boolean') return value;
@@ -63,6 +64,7 @@ const buildQueryParams = () => ({
     search: search.value,
     sort_by: sortBy.value,
     sort_dir: sortDir.value,
+    per_page: perPage.value,
     ...(isTrashed.value ? { trashed: 1 } : {}),
 });
 
@@ -74,6 +76,10 @@ const updateFilters = debounce(() => {
 }, 300);
 
 watch(search, () => {
+    updateFilters();
+});
+
+watch(perPage, () => {
     updateFilters();
 });
 
@@ -121,6 +127,15 @@ const goToPage = (url) => {
             </div>
 
             <div class="flex items-center gap-2">
+                <select 
+                    v-model="perPage"
+                    class="bg-white border border-secondary rounded-xl text-sm focus:ring-2 focus:ring-primary/50 transition-all py-2"
+                >
+                    <option :value="10">10 / page</option>
+                    <option :value="20">20 / page</option>
+                    <option :value="30">30 / page</option>
+                </select>
+
                 <button
                     v-if="showRecycleBin"
                     @click="toggleTrashed"
@@ -132,7 +147,7 @@ const goToPage = (url) => {
                     )"
                 >
                     <Trash2 class="w-4 h-4" />
-                    {{ isTrashed ? 'Viewing Trashed' : 'Recycle Bin' }}
+                    {{ isTrashed ? 'Trashed' : 'Recycle' }}
                 </button>
                 <slot name="extra-filters" />
             </div>

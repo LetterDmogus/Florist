@@ -46,10 +46,12 @@ class Order extends Model
     protected $fillable = [
         'user_id',
         'customer_id',
+        'request_id',
         'total',
         'shipping_date',
         'shipping_time',
         'shipping_type',
+        'shipping_fee',
         'down_payment',
         'payment_status',
         'order_status',
@@ -60,6 +62,7 @@ class Order extends Model
     {
         return [
             'total' => 'decimal:2',
+            'shipping_fee' => 'decimal:2',
             'down_payment' => 'decimal:2',
             'shipping_date' => 'date',
         ];

@@ -19,6 +19,7 @@ class DeliveryController extends Controller
 {
     public function index(Request $request): Response
     {
+        $perPage = $this->resolvePerPage($request);
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
             ['order_id', 'shipping_date', 'shipping_time', 'recipient_name', 'recipient_phone', 'full_address', 'created_at', 'updated_at'],
@@ -88,13 +89,16 @@ class DeliveryController extends Controller
         }
 
         $deliveries = $deliveriesQuery
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
         return Inertia::render('Deliveries/Index', [
             'deliveries' => $deliveries,
             'orderOptions' => [],
-            'filters' => $request->only('search', 'date', 'trashed', 'sort_by', 'sort_dir'),
+            'filters' => [
+                ...$request->only('search', 'date', 'trashed', 'sort_by', 'sort_dir'),
+                'per_page' => $perPage,
+            ],
         ]);
     }
 
@@ -187,7 +191,7 @@ class DeliveryController extends Controller
             $order->update(['shipping_type' => 'delivery']);
         });
 
-        return redirect()->route('orders.show', $order)
+        return redirect()->route('orders.status.index')
             ->with('success', 'Informasi pengiriman berhasil disimpan.');
     }
 

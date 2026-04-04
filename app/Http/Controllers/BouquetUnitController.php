@@ -17,6 +17,7 @@ class BouquetUnitController extends Controller
 {
     public function index(Request $request): Response
     {
+        $perPage = $this->resolvePerPage($request);
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
             ['serial_number', 'name', 'price', 'type_id', 'created_at', 'updated_at'],
@@ -24,13 +25,13 @@ class BouquetUnitController extends Controller
             'desc',
         );
 
-        $units = BouquetUnit::with('type.category')
+        $units = BouquetUnit::with(['type.category', 'media'])
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%")
                 ->orWhere('serial_number', 'like', "%{$request->search}%"))
             ->when($request->type_id, fn ($q) => $q->where('type_id', $request->type_id))
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
             ->orderBy($sortBy, $sortDir)
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
         $typeOptions = BouquetType::with('category')->orderBy('name')->get(['id', 'name', 'category_id']);
@@ -38,14 +39,14 @@ class BouquetUnitController extends Controller
         return Inertia::render('Bouquets/Index', [
             'units' => $units,
             'typeOptions' => $typeOptions,
-            'filters' => $request->only('search', 'type_id', 'trashed', 'sort_by', 'sort_dir'),
+            'filters' => $request->only('search', 'type_id', 'trashed', 'sort_by', 'sort_dir', 'per_page'),
             'tab' => 'units',
         ]);
     }
 
     public function show(BouquetUnit $bouquetUnit): Response
     {
-        $bouquetUnit->load('type.category');
+        $bouquetUnit->load(['type.category', 'media']);
 
         return Inertia::render('BouquetUnits/Show', [
             'unit' => $bouquetUnit,
