@@ -12,19 +12,24 @@ class StoreStockMovementRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasAnyRole(['super-admin', 'admin']);
+        return $this->user()->can('stock.manage');
     }
 
     public function rules(): array
     {
         return [
-            'movement_type' => ['nullable', Rule::in(['purchase', 'usage', 'sale', 'damaged'])],
+            'movement_type' => ['nullable', Rule::in(['purchase', 'usage', 'sale', 'damaged', 'in', 'out', 'sold'])],
+            'type' => ['nullable', Rule::in(['in', 'out', 'damaged', 'sold'])],
             'item_id' => ['required', 'integer', Rule::exists('item_units', 'id')->whereNull('deleted_at')],
             'quantity' => ['required', 'integer', 'min:1'],
             'price_at_the_time' => ['nullable', 'numeric', 'min:0'],
+            'price_rmb_at_the_time' => ['nullable', 'numeric', 'min:0'],
             'total' => ['nullable', 'numeric', 'min:0'],
             'description' => ['nullable', 'string'],
-            'type' => ['required', Rule::in(['in', 'out', 'damaged', 'sold'])],
+            'freight' => ['nullable', 'numeric', 'min:0'],
+            'no_resi' => ['nullable', 'string', 'max:255'],
+            'kode' => ['nullable', 'string', 'max:255'],
+            'estimate_arrived' => ['nullable', 'date'],
             'customer_mode' => ['nullable', Rule::in(['existing', 'new'])],
             'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->whereNull('deleted_at')],
             'new_customer_name' => ['nullable', 'string', 'max:255'],
@@ -48,14 +53,24 @@ class StoreStockMovementRequest extends FormRequest
             'sold' => 'sold',
         ];
 
-        $inputType = (string) ($this->input('movement_type') ?? $this->input('type') ?? '');
+        // Try movement_type first, then type
+        $inputType = (string) ($this->input('movement_type') ?? $this->input('type') ?? 'in');
         $normalizedType = $mapping[$inputType] ?? $inputType;
 
         $this->merge([
             'type' => $normalizedType,
+            'movement_type' => $inputType,
         ]);
 
         if ($normalizedType !== 'sold') {
+            $this->merge([
+                'shipping_date' => null,
+                'shipping_time' => null,
+                'shipping_type' => null,
+                'customer_id' => null,
+                'customer_mode' => null,
+            ]);
+
             return;
         }
 

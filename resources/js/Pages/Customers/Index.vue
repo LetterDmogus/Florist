@@ -9,7 +9,9 @@ import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
-import { Plus, Pencil, RotateCcw, Trash2, XCircle } from 'lucide-vue-next';
+import GlobalDetailModal from '@/Components/GlobalDetailModal.vue';
+import axios from 'axios';
+import { Plus, Pencil, RotateCcw, Trash2, XCircle, Phone, Users } from 'lucide-vue-next';
 
 const props = defineProps({
     customers: {
@@ -23,8 +25,29 @@ const props = defineProps({
 });
 
 const showModal = ref(false);
+const showQuickDetail = ref(false);
 const editingCustomer = ref(null);
+const detailItem = ref(null);
+const auditData = ref(null);
 const aliasesInput = ref('');
+
+const openQuickDetail = async (item) => {
+    detailItem.value = item;
+    showQuickDetail.value = true;
+    
+    try {
+        const { data } = await axios.get(route('customers.show', item.id));
+        auditData.value = data.audit_trail;
+    } catch (e) {
+        console.error('Failed to fetch audit trail', e);
+    }
+};
+
+const closeQuickDetail = () => {
+    showQuickDetail.value = false;
+    detailItem.value = null;
+    auditData.value = null;
+};
 
 const customerColumns = [
     { label: 'Name', key: 'name' },
@@ -144,7 +167,9 @@ const aliasError = computed(() => form.errors.aliases || form.errors['aliases.0'
                     :columns="customerColumns"
                     :filters="filters"
                     routeName="customers.index"
+                    viewRoute="customers.show"
                     searchPlaceholder="Search customer by name or phone..."
+                    @view-detail="openQuickDetail"
                 >
                     <template #cell-aliases="{ item }">
                         <div v-if="item.aliases?.length" class="flex flex-wrap gap-1.5 max-w-md">
@@ -174,6 +199,7 @@ const aliasError = computed(() => form.errors.aliases || form.errors['aliases.0'
                     <template #actions="{ item }">
                         <template v-if="item.deleted_at">
                             <button
+                                v-if="$can('customers.delete')"
                                 class="px-3 py-1.5 text-xs rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition"
                                 @click="restoreCustomer(item)"
                             >
@@ -183,6 +209,7 @@ const aliasError = computed(() => form.errors.aliases || form.errors['aliases.0'
                                 </span>
                             </button>
                             <button
+                                v-if="$can('customers.delete')"
                                 class="px-3 py-1.5 text-xs rounded-lg bg-red-50 hover:bg-red-100 text-red-700 transition"
                                 @click="forceDeleteCustomer(item)"
                             >
@@ -194,6 +221,7 @@ const aliasError = computed(() => form.errors.aliases || form.errors['aliases.0'
                         </template>
                         <template v-else>
                             <button
+                                v-if="$can('customers.manage')"
                                 class="px-3 py-1.5 text-xs rounded-lg bg-secondary/50 hover:bg-secondary text-foreground transition"
                                 @click="openEditModal(item)"
                             >
@@ -203,6 +231,7 @@ const aliasError = computed(() => form.errors.aliases || form.errors['aliases.0'
                                 </span>
                             </button>
                             <button
+                                v-if="$can('customers.manage')"
                                 class="px-3 py-1.5 text-xs rounded-lg bg-red-50 hover:bg-red-100 text-red-700 transition"
                                 @click="destroyCustomer(item)"
                             >
@@ -255,5 +284,37 @@ const aliasError = computed(() => form.errors.aliases || form.errors['aliases.0'
                 </div>
             </form>
         </Modal>
+
+        <!-- Global Quick Detail Modal -->
+        <GlobalDetailModal 
+            :show="showQuickDetail" 
+            :item="detailItem" 
+            :audit="auditData" 
+            type="Customer"
+            @close="closeQuickDetail"
+        >
+            <template #extra-info="{ item }">
+                <div class="col-span-2 p-4 bg-pink-50/50 rounded-2xl border-2 border-pink-100/50 space-y-3">
+                    <div class="flex items-center justify-between text-pink-900">
+                        <div class="flex items-center gap-2">
+                            <Phone class="w-4 h-4 text-pink-400" />
+                            <span class="text-[10px] font-bold uppercase tracking-widest">WhatsApp</span>
+                        </div>
+                        <span class="text-sm font-black">{{ item.phone_number }}</span>
+                    </div>
+                    <div v-if="item.aliases?.length" class="space-y-2">
+                        <div class="flex items-center gap-2">
+                            <Users class="w-4 h-4 text-pink-400" />
+                            <span class="text-[10px] font-bold uppercase tracking-widest">Dikenal Sebagai</span>
+                        </div>
+                        <div class="flex flex-wrap gap-1.5">
+                            <span v-for="alias in item.aliases" :key="alias" class="px-2 py-0.5 bg-white border border-pink-100 rounded-lg text-[10px] font-bold text-pink-600">
+                                {{ alias }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </GlobalDetailModal>
     </AppLayout>
 </template>

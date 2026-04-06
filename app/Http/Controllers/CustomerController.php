@@ -26,7 +26,8 @@ class CustomerController extends Controller
 
         $customers = Customer::query()
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%")
-                ->orWhere('phone_number', 'like', "%{$request->search}%"))
+                ->orWhere('phone_number', 'like', "%{$request->search}%")
+                ->orWhere('aliases', 'like', "%{$request->search}%"))
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
             ->withCount('orders')
             ->orderBy($sortBy === 'orders_count' ? 'orders_count' : $sortBy, $sortDir)
@@ -42,12 +43,20 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function show(Customer $customer): Response
+    public function show(Request $request, Customer $customer): Response|\Illuminate\Http\JsonResponse
     {
+        if ($request->wantsJson()) {
+            return response()->json([
+                'customer' => $customer,
+                'audit_trail' => $customer->getAuditTrail(),
+            ]);
+        }
+
         $customer->load(['orders' => fn ($q) => $q->latest()->limit(10)]);
 
         return Inertia::render('Customers/Show', [
             'customer' => $customer,
+            'audit_trail' => $customer->getAuditTrail(),
         ]);
     }
 

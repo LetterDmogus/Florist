@@ -40,17 +40,9 @@ defineProps({
                     <template v-else>
                         <Link
                             :href="route('login')"
-                            class="text-sm font-semibold text-pink-800 transition-colors hover:text-pink-600"
+                            class="inline-flex h-9 items-center justify-center rounded-xl bg-pink-100 px-5 text-sm font-bold text-pink-700 shadow-sm transition-all hover:bg-pink-200 hover:scale-105 active:scale-95"
                         >
-                            Log in
-                        </Link>
-
-                        <Link
-                            v-if="canRegister"
-                            :href="route('register')"
-                            class="inline-flex h-9 items-center justify-center rounded-xl bg-pink-600 px-5 text-sm font-bold text-white shadow-sm shadow-pink-100 transition-all hover:bg-pink-700 hover:scale-105 active:scale-95"
-                        >
-                            Register
+                            Admin Aja
                         </Link>
                     </template>
                 </div>
@@ -121,12 +113,9 @@ defineProps({
         </main>
 
         <footer class="border-t border-pink-100 py-12 bg-white/30">
-            <div class="container flex flex-col items-center justify-between gap-4 md:flex-row px-4 md:px-8">
+            <div class="container flex flex-col items-center justify-center gap-4 px-4 md:px-8">
                 <p class="text-sm text-pink-900/50 font-medium">
-                    &copy; 2026 Bees Fleur Florist POS. Terpelihara dengan kasih sayang.
-                </p>
-                <p class="text-xs text-pink-800/40">
-                    Laravel v{{ laravelVersion }} (PHP v{{ phpVersion }})
+                    &copy; 2026 Bees Fleur Florist POS
                 </p>
             </div>
         </footer>

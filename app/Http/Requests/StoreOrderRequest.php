@@ -13,7 +13,7 @@ class StoreOrderRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasAnyRole(['super-admin', 'admin', 'kasir']);
+        return $this->user()->can('orders.create');
     }
 
     protected function prepareForValidation(): void
@@ -72,6 +72,7 @@ class StoreOrderRequest extends FormRequest
             'details.*.sender_name' => ['nullable', 'string', 'max:255'],
             'details.*.custom_category_id' => ['nullable', 'integer', Rule::exists('bouquet_categories', 'id')->whereNull('deleted_at')],
             'details.*.custom_name' => ['nullable', 'string', 'max:255'],
+            'details.*.custom_serial_number' => ['nullable', 'string', 'max:255', 'unique:bouquet_units,serial_number'],
             'details.*.custom_price' => ['nullable', 'numeric', 'min:0'],
             'details.*.custom_note' => ['nullable', 'string'],
             'details.*.custom_image' => ['nullable', 'image', 'max:2048'],

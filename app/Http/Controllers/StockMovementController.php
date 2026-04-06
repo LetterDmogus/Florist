@@ -87,11 +87,12 @@ class StockMovementController extends Controller
 
         $customers = Customer::query()
             ->orderBy('name')
-            ->get(['id', 'name', 'phone_number'])
+            ->get(['id', 'name', 'phone_number', 'aliases'])
             ->map(fn (Customer $customer): array => [
                 'id' => $customer->id,
                 'name' => $customer->name,
                 'phone_number' => $customer->phone_number,
+                'aliases' => $customer->aliases,
             ])
             ->values()
             ->all();
@@ -122,7 +123,22 @@ class StockMovementController extends Controller
                 ])
                 ->values()
                 ->all(),
-            'canCreateStockMovement' => $request->user()?->hasAnyRole(['super-admin', 'admin']) ?? false,
+            'canCreateStockMovement' => $request->user()?->can('stock.manage') ?? false,
+        ]);
+    }
+
+    public function show(Request $request, StockMovement $stock_movement): Response|JsonResponse
+    {
+        if ($request->wantsJson()) {
+            return response()->json([
+                'item' => $stock_movement,
+                'audit_trail' => $stock_movement->getAuditTrail(),
+            ]);
+        }
+
+        return Inertia::render('StockMovements/Index', [
+            'item' => $stock_movement,
+            'audit_trail' => $stock_movement->getAuditTrail(),
         ]);
     }
 

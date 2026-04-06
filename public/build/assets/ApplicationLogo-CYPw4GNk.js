@@ -1,1 +1,0 @@
-import{_ as o}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{o as e,d as c}from"./app-Ckc39GQv.js";const t={},r={src:"/images/bees-fleur.png",alt:"Bees Fleur Logo",class:"block w-auto object-contain",loading:"eager"};function s(n,a){return e(),c("img",r)}const l=o(t,[["render",s]]);export{l as A};

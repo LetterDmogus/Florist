@@ -25,31 +25,55 @@ class BouquetUnitController extends Controller
             'desc',
         );
 
+        $activeStatus = $request->input('active_status', 'active'); // default active
+        $itemType = $request->input('item_type', 'catalog'); // default catalog (non-custom)
+
         $units = BouquetUnit::with(['type.category', 'media'])
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%")
                 ->orWhere('serial_number', 'like', "%{$request->search}%"))
             ->when($request->type_id, fn ($q) => $q->where('type_id', $request->type_id))
+            // Filter is_active
+            ->when($activeStatus === 'active', fn ($q) => $q->where('is_active', true))
+            ->when($activeStatus === 'inactive', fn ($q) => $q->where('is_active', false))
+            // Filter item_type
+            ->when($itemType === 'custom', fn ($q) => $q->whereHas('type', fn ($t) => $t->where('is_custom', true)))
+            ->when($itemType === 'catalog', fn ($q) => $q->whereHas('type', fn ($t) => $t->where('is_custom', false)))
+            // Filter trashed
             ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
             ->orderBy($sortBy, $sortDir)
             ->paginate($perPage)
             ->withQueryString();
 
-        $typeOptions = BouquetType::with('category')->orderBy('name')->get(['id', 'name', 'category_id']);
+        $typeOptions = BouquetType::with('category')
+            ->where('is_custom', false)
+            ->orderBy('name')
+            ->get(['id', 'name', 'category_id']);
 
         return Inertia::render('Bouquets/Index', [
             'units' => $units,
             'typeOptions' => $typeOptions,
-            'filters' => $request->only('search', 'type_id', 'trashed', 'sort_by', 'sort_dir', 'per_page'),
+            'filters' => array_merge(
+                ['active_status' => $activeStatus, 'item_type' => $itemType],
+                $request->only('search', 'type_id', 'trashed', 'sort_by', 'sort_dir', 'per_page')
+            ),
             'tab' => 'units',
         ]);
     }
 
-    public function show(BouquetUnit $bouquetUnit): Response
+    public function show(Request $request, BouquetUnit $bouquet_unit): Response|\Illuminate\Http\JsonResponse
     {
-        $bouquetUnit->load(['type.category', 'media']);
+        if ($request->wantsJson()) {
+            return response()->json([
+                'item' => $bouquet_unit,
+                'audit_trail' => $bouquet_unit->getAuditTrail(),
+            ]);
+        }
+
+        $bouquet_unit->load(['type.category', 'media']);
 
         return Inertia::render('BouquetUnits/Show', [
-            'unit' => $bouquetUnit,
+            'unit' => $bouquet_unit,
+            'audit_trail' => $bouquet_unit->getAuditTrail(),
         ]);
     }
 
@@ -65,22 +89,22 @@ class BouquetUnitController extends Controller
         return redirect()->back()->with('success', 'Bouquet berhasil ditambahkan.');
     }
 
-    public function update(UpdateBouquetUnitRequest $request, BouquetUnit $bouquetUnit): RedirectResponse
+    public function update(UpdateBouquetUnitRequest $request, BouquetUnit $bouquet_unit): RedirectResponse
     {
         $validated = $request->validated();
-        $bouquetUnit->update($validated);
+        $bouquet_unit->update($validated);
 
         if ($request->hasFile('image')) {
-            $bouquetUnit->clearMediaCollection('images');
-            $bouquetUnit->addMediaFromRequest('image')->toMediaCollection('images');
+            $bouquet_unit->clearMediaCollection('images');
+            $bouquet_unit->addMediaFromRequest('image')->toMediaCollection('images');
         }
 
         return redirect()->back()->with('success', 'Bouquet berhasil diperbarui.');
     }
 
-    public function destroy(BouquetUnit $bouquetUnit): RedirectResponse
+    public function destroy(BouquetUnit $bouquet_unit): RedirectResponse
     {
-        $bouquetUnit->delete();
+        $bouquet_unit->delete();
 
         return redirect()->back()->with('success', 'Bouquet berhasil dihapus secara temporer.');
     }

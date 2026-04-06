@@ -9,7 +9,9 @@ import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
-import { Plus, Pencil, Trash2, RotateCcw, XCircle, Upload } from 'lucide-vue-next';
+import GlobalDetailModal from '@/Components/GlobalDetailModal.vue';
+import axios from 'axios';
+import { Plus, Pencil, Trash2, RotateCcw, XCircle, Upload, Download, Package, Tag } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
 
 const props = defineProps({
@@ -41,10 +43,32 @@ const props = defineProps({
 
 const activeTab = ref(props.tab || 'units');
 const showModal = ref(false);
+const showQuickDetail = ref(false);
 const showImportModal = ref(false);
 const editingItem = ref(null);
+const detailItem = ref(null);
+const auditData = ref(null);
 const imagePreview = ref(null);
 const selectedCategory = ref(props.filters.category_id || '');
+
+const openQuickDetail = async (item) => {
+    detailItem.value = item;
+    showQuickDetail.value = true;
+    
+    try {
+        const routeName = activeTab.value === 'categories' ? 'item-categories.show' : 'item-units.show';
+        const { data } = await axios.get(route(routeName, item.id));
+        auditData.value = data.audit_trail;
+    } catch (e) {
+        console.error('Failed to fetch audit trail', e);
+    }
+};
+
+const closeQuickDetail = () => {
+    showQuickDetail.value = false;
+    detailItem.value = null;
+    auditData.value = null;
+};
 
 const parseTruthy = (value) => ['1', 1, true, 'true', 'with', 'yes', 'on'].includes(value);
 const isViewingTrashed = computed(() => parseTruthy(props.filters.trashed));
@@ -285,6 +309,14 @@ const generateSlug = () => {
         .replace(/[^\w-]+/g, '');
 };
 
+const exportExcel = () => {
+    const params = new URLSearchParams({
+        category_id: selectedCategory.value || '',
+        search: props.filters.search || '',
+    });
+    window.location.href = route('item-units.export') + '?' + params.toString();
+};
+
 const applyCategoryFilter = () => {
     router.get(route('item-units.index'), {
         search: props.filters.search || '',
@@ -313,6 +345,14 @@ if (props.importPreview?.token) {
                     Inventory Management
                 </h2>
                 <div class="flex items-center gap-2">
+                    <SecondaryButton
+                        v-if="activeTab === 'units'"
+                        class="rounded-xl flex items-center gap-2"
+                        @click="exportExcel"
+                    >
+                        <Download class="w-4 h-4" />
+                        Export Excel
+                    </SecondaryButton>
                     <SecondaryButton
                         v-if="activeTab === 'units'"
                         class="rounded-xl flex items-center gap-2"
@@ -358,8 +398,10 @@ if (props.importPreview?.token) {
                         :columns="unitColumns"
                         :filters="filters"
                         routeName="item-units.index"
+                        viewRoute="item-units.show"
                         searchPlaceholder="Search item by name or serial number..."
                         :additional-params="{ category_id: selectedCategory || '' }"
+                        @view-detail="openQuickDetail"
                     >
                         <template #extra-filters>
                             <select
@@ -451,7 +493,9 @@ if (props.importPreview?.token) {
                         :columns="categoryColumns"
                         :filters="filters"
                         routeName="item-categories.index"
+                        viewRoute="item-categories.show"
                         searchPlaceholder="Search category..."
+                        @view-detail="openQuickDetail"
                     >
                         <template #cell-item_units_count="{ item }">
                             <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-secondary text-foreground">
@@ -706,5 +750,33 @@ if (props.importPreview?.token) {
                 </div>
             </form>
         </Modal>
+
+        <!-- Global Quick Detail Modal -->
+        <GlobalDetailModal 
+            :show="showQuickDetail" 
+            :item="detailItem" 
+            :audit="auditData" 
+            :type="activeTab === 'categories' ? 'Category' : 'Inventory'"
+            @close="closeQuickDetail"
+        >
+            <template #extra-info="{ item }">
+                <div v-if="activeTab === 'units'" class="col-span-2 grid grid-cols-2 gap-4">
+                    <div class="p-4 bg-pink-50/50 rounded-2xl border-2 border-pink-100/50 flex flex-col gap-1">
+                        <div class="flex items-center gap-2 text-pink-400">
+                            <Tag class="w-3.5 h-3.5" />
+                            <span class="text-[10px] font-bold uppercase tracking-widest text-pink-900">Kategori</span>
+                        </div>
+                        <span class="text-sm font-black text-pink-950">{{ item.category?.name || '-' }}</span>
+                    </div>
+                    <div class="p-4 bg-pink-50/50 rounded-2xl border-2 border-pink-100/50 flex flex-col gap-1">
+                        <div class="flex items-center gap-2 text-pink-400">
+                            <Package class="w-3.5 h-3.5" />
+                            <span class="text-[10px] font-bold uppercase tracking-widest text-pink-900">Unit Satuan</span>
+                        </div>
+                        <span class="text-sm font-black text-pink-950">{{ item.individual || '-' }}</span>
+                    </div>
+                </div>
+            </template>
+        </GlobalDetailModal>
     </AppLayout>
 </template>

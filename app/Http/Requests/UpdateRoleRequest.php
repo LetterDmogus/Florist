@@ -12,7 +12,7 @@ class UpdateRoleRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasRole('super-admin');
+        return $this->user()->can('roles.manage');
     }
 
     public function rules(): array

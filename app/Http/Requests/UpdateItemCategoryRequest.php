@@ -12,7 +12,7 @@ class UpdateItemCategoryRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasAnyRole(['super-admin', 'admin']);
+        return $this->user()->can('inventory.manage');
     }
 
     public function rules(): array

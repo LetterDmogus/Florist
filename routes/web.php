@@ -84,8 +84,15 @@ Route::middleware([
         Route::get('orders', fn () => redirect()->route('cashier.index'))->name('orders.index');
         Route::get('orders/create', fn () => redirect()->route('cashier.index'))->name('orders.create');
         Route::get('orders/{order}', fn () => redirect()->route('orders.status.index'))->name('orders.show');
-        Route::match(['put', 'patch'], 'orders/{order}', fn () => abort(404))->name('orders.update');
-        Route::delete('orders/{order}', fn () => abort(404))->name('orders.destroy');
+        Route::get('orders/{order}/edit', [OrderController::class, 'edit'])
+            ->middleware('can:orders.edit')
+            ->name('orders.edit');
+        Route::match(['put', 'patch'], 'orders/{order}', [OrderController::class, 'update'])
+            ->middleware('can:orders.edit')
+            ->name('orders.update');
+        Route::delete('orders/{order}', [OrderController::class, 'destroy'])
+            ->middleware('can:orders.delete')
+            ->name('orders.destroy');
 
         Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus'])
             ->middleware('can:orders.status.update')
@@ -135,6 +142,9 @@ Route::middleware([
         Route::delete('item-categories/{id}/force-delete', [ItemCategoryController::class, 'forceDelete'])->name('item-categories.force-delete')->middleware('can:inventory.delete');
         Route::resource('item-categories', ItemCategoryController::class)
             ->except(['create', 'show', 'edit']);
+
+        Route::get('item-units/export', [ItemUnitController::class, 'export'])
+            ->name('item-units.export');
 
         Route::post('item-units/import', [ItemUnitController::class, 'importPreview'])
             ->middleware('throttle:sensitive-write')

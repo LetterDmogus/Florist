@@ -62,7 +62,7 @@ class DashboardController extends Controller
         return [
             'ordersToday' => [
                 'value' => (string) $ordersToday,
-                'description' => $processingOrders . ' pesanan sedang diproses',
+                'description' => $processingOrders . ' pesanan belum di-pickup',
                 'trend' => $this->getTrend(Order::class, 'created_at', 'day'),
                 'trendUp' => true,
             ],

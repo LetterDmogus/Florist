@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Actions\ParseInventorySupplyReportAction;
+use App\Exports\InventoryExport;
 use App\Http\Requests\ImportItemUnitRequest;
 use App\Http\Requests\StoreItemUnitRequest;
 use App\Http\Requests\UpdateItemUnitRequest;
@@ -17,6 +18,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Throwable;
 
 class ItemUnitController extends Controller
@@ -57,16 +60,24 @@ class ItemUnitController extends Controller
         ]);
     }
 
-    public function show(ItemUnit $itemUnit): Response
+    public function show(Request $request, ItemUnit $item_unit): Response|\Illuminate\Http\JsonResponse
     {
-        $itemUnit->load([
+        if ($request->wantsJson()) {
+            return response()->json([
+                'item' => $item_unit,
+                'audit_trail' => $item_unit->getAuditTrail(),
+            ]);
+        }
+
+        $item_unit->load([
             'category',
             'media',
             'stockMovements' => fn ($q) => $q->latest()->limit(20),
         ]);
 
         return Inertia::render('ItemUnits/Show', [
-            'item' => $itemUnit,
+            'item' => $item_unit,
+            'audit_trail' => $item_unit->getAuditTrail(),
         ]);
     }
 
@@ -83,23 +94,23 @@ class ItemUnitController extends Controller
             ->with('success', 'Item berhasil ditambahkan.');
     }
 
-    public function update(UpdateItemUnitRequest $request, ItemUnit $itemUnit): RedirectResponse
+    public function update(UpdateItemUnitRequest $request, ItemUnit $item_unit): RedirectResponse
     {
         $validated = $request->validated();
-        $itemUnit->update($validated);
+        $item_unit->update($validated);
 
         if ($request->hasFile('image')) {
-            $itemUnit->clearMediaCollection('images');
-            $itemUnit->addMediaFromRequest('image')->toMediaCollection('images');
+            $item_unit->clearMediaCollection('images');
+            $item_unit->addMediaFromRequest('image')->toMediaCollection('images');
         }
 
         return redirect()->route('item-units.index')
             ->with('success', 'Item berhasil diperbarui.');
     }
 
-    public function destroy(ItemUnit $itemUnit): RedirectResponse
+    public function destroy(ItemUnit $item_unit): RedirectResponse
     {
-        $itemUnit->delete();
+        $item_unit->delete();
 
         return redirect()->route('item-units.index')
             ->with('success', 'Item berhasil dihapus.');
@@ -121,6 +132,32 @@ class ItemUnitController extends Controller
 
         return redirect()->route('item-units.index')
             ->with('success', 'Item berhasil dihapus permanen.');
+    }
+
+    public function export(Request $request): BinaryFileResponse
+    {
+        abort_unless($request->user()?->can('reports.export'), 403);
+
+        $categoryId = $request->input('category_id');
+        $search = $request->input('search');
+
+        $items = ItemUnit::query()
+            ->when($categoryId, fn ($q) => $q->where('category_id', $categoryId))
+            ->when($search, fn ($q) => $q->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('serial_number', 'like', "%{$search}%");
+            }))
+            ->orderBy('name')
+            ->get();
+
+        $categoryName = 'All';
+        if ($categoryId) {
+            $categoryName = ItemCategory::find($categoryId)?->name ?? 'Category';
+        }
+
+        $fileName = 'Inventory_' . Str::slug($categoryName) . '_' . now()->format('Y-m-d_His') . '.xlsx';
+
+        return Excel::download(new InventoryExport($items), $fileName);
     }
 
     public function importPreview(
@@ -186,7 +223,7 @@ class ItemUnitController extends Controller
 
     public function importCommit(Request $request): RedirectResponse
     {
-        abort_unless($request->user()?->hasAnyRole(['super-admin', 'admin']), 403);
+        abort_unless($request->user()?->can('inventory.manage'), 403);
 
         $validated = $request->validate([
             'token' => ['required', 'uuid'],
@@ -236,7 +273,7 @@ class ItemUnitController extends Controller
 
     public function importDiscard(Request $request): RedirectResponse
     {
-        abort_unless($request->user()?->hasAnyRole(['super-admin', 'admin']), 403);
+        abort_unless($request->user()?->can('inventory.manage'), 403);
 
         $validated = $request->validate([
             'token' => ['nullable', 'uuid'],

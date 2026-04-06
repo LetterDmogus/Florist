@@ -54,6 +54,27 @@ class CreateStockMovementAction
                 'order_id' => $order?->id,
             ]);
 
+            if ($type === 'in') {
+                $stockMovementDescription = sprintf('Pembelian %d item %s.', (int) $quantity, (string) $item->name);
+                if (!empty($validated['description'])) {
+                    $stockMovementDescription .= " " . $validated['description'];
+                }
+
+                \App\Models\ReportEntry::create([
+                    'category' => 'purchase_supply',
+                    'description' => $stockMovementDescription,
+                    'occurred_on' => now()->format('Y-m-d'),
+                    'amount_idr' => $total,
+                    'amount_rmb' => isset($validated['price_rmb_at_the_time']) ? (float) $validated['price_rmb_at_the_time'] * $quantity : null,
+                    'exchange_rate' => null,
+                    'freight_idr' => isset($validated['freight']) ? (float) $validated['freight'] : null,
+                    'tracking_number' => $validated['no_resi'] ?? null,
+                    'code' => $validated['kode'] ?? null,
+                    'estimated_arrived_on' => $validated['estimate_arrived'] ?? null,
+                    'notes' => "Generated from Stock Movement #{$movement->id}",
+                ]);
+            }
+
             // Update stok berdasarkan tipe gerakan
             match ($type) {
                 'in' => $item->increment('stock', $quantity),

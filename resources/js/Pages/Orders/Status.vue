@@ -4,7 +4,7 @@ import Modal from '@/Components/Modal.vue';
 import BaseButton from '@/Components/BaseButton.vue';
 import { Head, router, Link } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
-import { Printer, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-vue-next';
+import { Printer, ArrowUpDown, ChevronUp, ChevronDown, Trash2, XCircle, Pencil } from 'lucide-vue-next';
 
 const props = defineProps({
     orders: {
@@ -20,6 +20,10 @@ const props = defineProps({
         default: () => [],
     },
     canManageOrderStatus: {
+        type: Boolean,
+        default: false,
+    },
+    canDeleteOrder: {
         type: Boolean,
         default: false,
     },
@@ -149,6 +153,20 @@ const applySearch = () => {
     });
 };
 
+const goToPage = (url) => {
+    if (url) {
+        router.get(url, {
+            order_status: activeOrderStatus.value || '',
+            search: search.value || '',
+            sort_by: sortBy.value,
+            sort_dir: sortDir.value,
+        }, {
+            preserveScroll: true,
+            preserveState: true,
+        });
+    }
+};
+
 const getStatusIndex = (status) => {
     return statusValues.value.indexOf(status);
 };
@@ -163,7 +181,14 @@ const getNextStatus = (status, shippingType = 'pickup') => {
         return null;
     }
 
-    return statusValues.value[index + 1] ?? null;
+    const next = statusValues.value[index + 1] ?? null;
+    
+    // Jangan izinkan 'canceled' sebagai next status otomatis (itu manual)
+    if (next === 'canceled') {
+        return null;
+    }
+
+    return next;
 };
 
 const isBlockedByPayment = (order) => {
@@ -194,7 +219,42 @@ const stepOrderStatus = (order) => {
     }, {
         preserveScroll: true,
         preserveState: true,
-        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus'],
+        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus', 'canDeleteOrder'],
+        onFinish: () => {
+            updatingOrderId.value = null;
+        },
+    });
+};
+
+const cancelOrder = (order) => {
+    if (!confirm('Apakah Anda yakin ingin membatalkan order ini?')) {
+        return;
+    }
+
+    updatingOrderId.value = order.id;
+
+    router.patch(route('orders.status.update', order.id), {
+        order_status: 'canceled',
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus', 'canDeleteOrder'],
+        onFinish: () => {
+            updatingOrderId.value = null;
+        },
+    });
+};
+
+const discardOrder = (order) => {
+    if (!confirm('Hapus order ini secara permanen? Penomoran ID order akan dikembalikan jika ini order terbaru.')) {
+        return;
+    }
+
+    updatingOrderId.value = order.id;
+
+    router.delete(route('orders.destroy', order.id), {
+        preserveScroll: true,
+        preserveState: true,
         onFinish: () => {
             updatingOrderId.value = null;
         },
@@ -213,7 +273,7 @@ const markOrderAsPaid = (order) => {
     }, {
         preserveScroll: true,
         preserveState: true,
-        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus'],
+        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus', 'canDeleteOrder'],
         onFinish: () => {
             updatingPaymentOrderId.value = null;
         },
@@ -428,6 +488,17 @@ watch(
                                         >
                                             <Printer class="h-4 w-4" />
                                         </BaseButton>
+                                        <BaseButton
+                                            v-if="order.order_status !== 'completed' && order.order_status !== 'canceled'"
+                                            as="Link"
+                                            :href="route('orders.edit', order.id)"
+                                            variant="secondary"
+                                            size="icon"
+                                            class="h-8 w-8 text-blue-600 border-blue-100 hover:bg-blue-50"
+                                            title="Edit Order"
+                                        >
+                                            <Pencil class="h-4 w-4" />
+                                        </BaseButton>
                                         <button
                                             type="button"
                                             class="inline-flex rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-xs font-semibold text-pink-700 transition hover:bg-pink-50"
@@ -440,18 +511,39 @@ watch(
                                 <td v-if="canManageOrderStatus" class="px-3 py-2">
                                     <div class="flex items-center gap-2">
                                         <button
-                                            v-if="order.payment_status !== 'paid'"
+                                            v-if="order.payment_status !== 'paid' && order.order_status !== 'canceled'"
                                             type="button"
                                             class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                                             :disabled="updatingPaymentOrderId === order.id"
                                             @click="markOrderAsPaid(order)"
                                         >
-                                            {{ updatingPaymentOrderId === order.id ? 'Saving...' : 'Tandai Lunas' }}
+                                            {{ updatingPaymentOrderId === order.id ? 'Saving...' : 'Lunas' }}
                                         </button>
                                         <button
+                                            v-if="order.order_status !== 'canceled' && order.order_status !== 'completed'"
+                                            type="button"
+                                            class="rounded-lg border border-pink-200 bg-white p-1.5 text-pink-600 transition hover:bg-pink-50 disabled:opacity-50"
+                                            title="Batalkan Order"
+                                            :disabled="updatingOrderId === order.id"
+                                            @click="cancelOrder(order)"
+                                        >
+                                            <XCircle class="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            v-if="canDeleteOrder && order.order_status === 'canceled'"
+                                            type="button"
+                                            class="rounded-lg border border-pink-200 bg-white p-1.5 text-pink-600 transition hover:bg-pink-50 disabled:opacity-50"
+                                            title="Discard/Delete Permanen"
+                                            :disabled="updatingOrderId === order.id"
+                                            @click="discardOrder(order)"
+                                        >
+                                            <Trash2 class="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            v-if="getNextStatus(order.order_status, order.shipping_type)"
                                             type="button"
                                             class="rounded-lg bg-pink-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                            :disabled="updatingOrderId === order.id || !getNextStatus(order.order_status, order.shipping_type) || isBlockedByPayment(order)"
+                                            :disabled="updatingOrderId === order.id || isBlockedByPayment(order)"
                                             @click="stepOrderStatus(order)"
                                         >
                                             {{ updatingOrderId === order.id ? 'Saving...' : getActionLabel(order) }}
@@ -464,6 +556,31 @@ watch(
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <!-- Pagination -->
+                <div v-if="orders.links && orders.links.length > 3" class="mt-6 flex flex-col items-center justify-between gap-4 border-t border-pink-100 pt-4 sm:flex-row">
+                    <div class="text-xs text-pink-700">
+                        Menampilkan {{ orders.from }} sampai {{ orders.to }} dari {{ orders.total }} order
+                    </div>
+                    <div class="flex flex-wrap items-center justify-center gap-1">
+                        <template v-for="(link, k) in orders.links" :key="k">
+                            <button
+                                v-if="link.url === null"
+                                class="rounded-lg border border-pink-100 bg-pink-50/50 px-3 py-1.5 text-xs text-pink-300"
+                                v-html="link.label"
+                            />
+                            <button
+                                v-else
+                                class="rounded-lg border px-3 py-1.5 text-xs font-semibold transition"
+                                :class="link.active
+                                    ? 'border-pink-600 bg-pink-600 text-white'
+                                    : 'border-pink-200 bg-white text-pink-700 hover:bg-pink-50'"
+                                @click="goToPage(link.url)"
+                                v-html="link.label"
+                            />
+                        </template>
+                    </div>
                 </div>
             </section>
         </div>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, reactive, watch } from 'vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import DataTable from '@/Components/DataTable.vue';
@@ -9,6 +9,8 @@ import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import GlobalDetailModal from '@/Components/GlobalDetailModal.vue';
+import axios from 'axios';
 import { Plus, Edit2, Trash, RotateCcw, XCircle } from 'lucide-vue-next';
 import { toast } from 'vue-sonner';
 import { cn } from '@/lib/utils';
@@ -23,12 +25,40 @@ const props = defineProps({
     filters: Object,
 });
 
+const resolvedTypeOptions = computed(() => props.typeOptions || []);
+const resolvedCategoryOptions = computed(() => props.categoryOptions || []);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Common State
 // ─────────────────────────────────────────────────────────────────────────────
-const activeTab = ref(props.tab || 'units');
+const activeTab = computed(() => props.tab || 'units');
 const showModal = ref(false);
+const showQuickDetail = ref(false);
 const editingItem = ref(null);
+const detailItem = ref(null);
+const auditData = ref(null);
+
+const openQuickDetail = async (item) => {
+    detailItem.value = item;
+    showQuickDetail.value = true;
+    
+    // Fetch audit trail data
+    try {
+        const routeName = activeTab.value === 'categories' ? 'bouquet-categories.show'
+                        : activeTab.value === 'types' ? 'bouquet-types.show'
+                        : 'bouquet-units.show';
+        const { data } = await axios.get(route(routeName, item.id));
+        auditData.value = data.audit_trail;
+    } catch (e) {
+        console.error('Failed to fetch audit trail', e);
+    }
+};
+
+const closeQuickDetail = () => {
+    showQuickDetail.value = false;
+    detailItem.value = null;
+    auditData.value = null;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Forms
@@ -50,7 +80,6 @@ const unitForm = useForm({
     serial_number: '',
     name: '',
     description: '',
-    money_bouquet: '',
     price: '',
     is_active: true,
     image: null,
@@ -98,11 +127,11 @@ const openEditModal = (item) => {
         unitForm.serial_number = item.serial_number;
         unitForm.name = item.name;
         unitForm.description = item.description;
-        unitForm.money_bouquet = item.money_bouquet ?? item.price;
-        unitForm.price = item.money_bouquet ?? item.price;
+        unitForm.price = item.price;
         unitForm.is_active = !!item.is_active;
         unitForm.image = null;
         unitForm._method = 'PUT';
+        unitForm.clearErrors();
         imagePreview.value = item.image_url;
     }
     showModal.value = true;
@@ -136,8 +165,6 @@ const submitForm = () => {
             });
         }
     } else if (activeTab.value === 'units') {
-        unitForm.price = unitForm.money_bouquet;
-
         if (editingItem.value) {
             // Use post with _method PUT for multipart form updates
             unitForm.post(route('bouquet-units.update', editingItem.value.id), {
@@ -186,6 +213,16 @@ const forceDeleteItem = (id) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Column Definitions
 // ─────────────────────────────────────────────────────────────────────────────
+const extraFilters = reactive({
+    active_status: props.filters?.active_status || 'active',
+    item_type: props.filters?.item_type || 'catalog',
+});
+
+watch(() => props.filters, (newFilters) => {
+    extraFilters.active_status = newFilters?.active_status || 'active';
+    extraFilters.item_type = newFilters?.item_type || 'catalog';
+}, { deep: true });
+
 const categoryColumns = [
     { label: 'Name', key: 'name' },
     { label: 'Slug', key: 'slug' },
@@ -202,8 +239,9 @@ const unitColumns = [
     { label: 'Image', key: 'image_url', sortable: false },
     { label: 'SKU / Serial', key: 'serial_number' },
     { label: 'Name', key: 'name' },
+    { label: 'Source', key: 'source', sortable: false },
     { label: 'Type', key: 'type', sortKey: 'type_id' },
-    { label: 'Money Bouquet', key: 'price' },
+    { label: 'Harga', key: 'price' },
     { label: 'Status', key: 'is_active' },
 ];
 
@@ -271,9 +309,30 @@ const generateSlug = () => {
                         :data="units" 
                         :columns="unitColumns" 
                         :filters="filters"
+                        :extraFilters="extraFilters"
                         routeName="bouquet-units.index"
+                        viewRoute="bouquet-units.show"
                         searchPlaceholder="Search by name or serial..."
+                        @view-detail="openQuickDetail"
                     >
+                        <template #extra-filters>
+                            <select 
+                                v-model="extraFilters.active_status"
+                                class="bg-white border border-secondary rounded-xl text-sm focus:ring-2 focus:ring-primary/50 transition-all py-2"
+                            >
+                                <option value="active">Status: Aktif</option>
+                                <option value="inactive">Status: Non-Aktif</option>
+                                <option value="all">Status: Semua</option>
+                            </select>
+                            <select 
+                                v-model="extraFilters.item_type"
+                                class="bg-white border border-secondary rounded-xl text-sm focus:ring-2 focus:ring-primary/50 transition-all py-2"
+                            >
+                                <option value="catalog">Tipe: Katalog</option>
+                                <option value="custom">Tipe: Custom</option>
+                                <option value="all">Tipe: Semua</option>
+                            </select>
+                        </template>
                         <template #cell-image_url="{ item }">
                             <div class="w-12 h-12 rounded-lg bg-secondary/50 overflow-hidden border border-secondary">
                                 <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="w-full h-full object-cover" />
@@ -285,6 +344,11 @@ const generateSlug = () => {
                         <template #cell-type="{ item }">
                             <span class="px-2 py-1 bg-primary/10 text-primary-foreground rounded-lg text-xs font-semibold">
                                 {{ item.type?.name }}
+                            </span>
+                        </template>
+                        <template #cell-source="{ item }">
+                            <span :class="cn('px-2 py-1 rounded-lg text-xs font-semibold', item.type?.is_custom ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')">
+                                {{ item.type?.is_custom ? 'Custom' : 'Katalog' }}
                             </span>
                         </template>
                         <template #cell-price="{ item }">
@@ -323,6 +387,8 @@ const generateSlug = () => {
                         :columns="typeColumns" 
                         :filters="filters"
                         routeName="bouquet-types.index"
+                        viewRoute="bouquet-types.show"
+                        @view-detail="openQuickDetail"
                     >
                         <template #cell-category="{ item }">
                             {{ item.category?.name }}
@@ -360,6 +426,8 @@ const generateSlug = () => {
                         :columns="categoryColumns" 
                         :filters="filters"
                         routeName="bouquet-categories.index"
+                        viewRoute="bouquet-categories.show"
+                        @view-detail="openQuickDetail"
                     >
                         <template #actions="{ item }">
                             <template v-if="item.deleted_at">
@@ -431,7 +499,7 @@ const generateSlug = () => {
                                 required
                             >
                                 <option value="" disabled>Select Category</option>
-                                <option v-for="cat in categoryOptions" :key="cat.id" :value="cat.id">
+                                <option v-for="cat in resolvedCategoryOptions" :key="cat.id" :value="cat.id">
                                     {{ cat.name }}
                                 </option>
                             </select>
@@ -482,7 +550,7 @@ const generateSlug = () => {
                                     required
                                 >
                                     <option value="" disabled>Select Type</option>
-                                    <option v-for="t in typeOptions" :key="t.id" :value="t.id">
+                                    <option v-for="t in resolvedTypeOptions" :key="t.id" :value="t.id">
                                         {{ t.name }} ({{ t.category?.name }})
                                     </option>
                                 </select>
@@ -496,9 +564,9 @@ const generateSlug = () => {
                                 <InputError :message="unitForm.errors.serial_number" class="mt-2" />
                             </div>
                             <div>
-                                <InputLabel for="money_bouquet" value="Money Bouquet (IDR)" />
-                                <TextInput id="money_bouquet" v-model="unitForm.money_bouquet" type="number" class="mt-1 block w-full" required />
-                                <InputError :message="unitForm.errors.money_bouquet || unitForm.errors.price" class="mt-2" />
+                                <InputLabel for="price" value="Harga Bouquet (IDR)" />
+                                <TextInput id="price" v-model="unitForm.price" type="number" class="mt-1 block w-full" required />
+                                <InputError :message="unitForm.errors.price" class="mt-2" />
                             </div>
                         </div>
                         <div>
@@ -542,6 +610,15 @@ const generateSlug = () => {
                 </form>
             </div>
         </Modal>
+
+        <!-- Global Quick Detail Modal -->
+        <GlobalDetailModal 
+            :show="showQuickDetail" 
+            :item="detailItem" 
+            :audit="auditData" 
+            :type="activeTab === 'categories' ? 'Category' : activeTab === 'types' ? 'Type' : 'Bouquet'"
+            @close="closeQuickDetail"
+        />
     </AppLayout>
 </template>
 

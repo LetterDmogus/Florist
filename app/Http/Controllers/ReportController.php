@@ -87,7 +87,7 @@ class ReportController extends Controller
                 ->map(fn (string $label, string $value): array => ['value' => $value, 'label' => $label])
                 ->values()
                 ->all(),
-            'canManageReportEntries' => $request->user()?->hasAnyRole(['super-admin', 'admin']) ?? false,
+            'canManageReportEntries' => $request->user()?->can('reports.manage') ?? false,
         ]);
     }
 
@@ -220,7 +220,7 @@ class ReportController extends Controller
 
     private function resolvePeriod(Request $request): array
     {
-        $year = max(2020, min(2100, (int) $request->integer('year', now()->year)));
+        $year = max(2000, min(2100, (int) $request->integer('year', now()->year)));
         $month = max(1, min(12, (int) $request->integer('month', now()->month)));
 
         $start = CarbonImmutable::create($year, $month, 1)->startOfMonth();
@@ -250,7 +250,6 @@ class ReportController extends Controller
             'total' => round($salesRows->sum('total'), 2),
         ];
 
-        $purchaseRows = $this->buildPurchaseRows($start, $end);
         $reportEntries = ReportEntry::query()
             ->whereBetween('occurred_on', [$start->toDateString(), $end->toDateString()])
             ->orderBy('occurred_on')
@@ -264,12 +263,21 @@ class ReportController extends Controller
         $storeExpenseRows = $this->buildGenericEntryRows($entriesByCategory->get('store_expense', collect()));
         $rawMaterialRows = $this->buildGenericEntryRows($entriesByCategory->get('raw_material_expense', collect()));
         $profitAdjustments = $this->buildGenericEntryRows($entriesByCategory->get('profit_adjustment', collect()));
-        $supplyPurchaseRows = $this->buildSupplyPurchaseRows($entriesByCategory->get('purchase_supply', collect()));
+        
+        // Logical split for "purchase_supply" category
+        $allPurchases = $entriesByCategory->get('purchase_supply', collect());
+        $physicalEntries = $allPurchases->filter(fn ($e) => str_contains($e->notes ?? '', 'Generated from Stock Movement'));
+        $manualEntries = $allPurchases->filter(fn ($e) => ! str_contains($e->notes ?? '', 'Generated from Stock Movement'));
+
+        $purchaseRows = $this->buildSupplyPurchaseRows($physicalEntries);
+        $supplyPurchaseRows = $this->buildSupplyPurchaseRows($manualEntries);
+        
         $refundRows = $this->buildRefundRows($entriesByCategory->get('refund', collect()));
 
         $storeExpenseTotal = $this->sumGenericRows($storeExpenseRows);
         $rawMaterialExpenseTotal = $this->sumGenericRows($rawMaterialRows);
         $shippingTotal = $this->sumGenericRows($shippingRows);
+        
         $purchaseTotal = round($purchaseRows->sum('total'), 2);
         $supplyPurchaseTotal = round($supplyPurchaseRows->sum('total'), 2);
         $refundIdrTotal = round($refundRows->sum('idr'), 2);
@@ -278,7 +286,7 @@ class ReportController extends Controller
         $profitSummary = [
             'florist_income' => round($salesSummary['fee'], 2),
             'supply_income' => round($supplyIncomeTotal, 2),
-            'purchase_total' => round($purchaseTotal, 2),
+            'purchase_total' => round($purchaseTotal + $supplyPurchaseTotal, 2), // Total all supply purchases
             'store_expense_total' => round($storeExpenseTotal, 2),
             'raw_material_expense_total' => round($rawMaterialExpenseTotal, 2),
             'shipping_total' => round($shippingTotal, 2),
@@ -299,10 +307,10 @@ class ReportController extends Controller
             'supply_purchase_total' => $supplyPurchaseTotal,
             'store_expense_total' => round($storeExpenseTotal, 2),
             'raw_material_expense_total' => round($rawMaterialExpenseTotal, 2),
-            'total_expense' => round($storeExpenseTotal + $rawMaterialExpenseTotal, 2),
-            'refund_rmb_total' => $refundRmbTotal,
+            'shipping_total' => $shippingTotal,
             'refund_idr_total' => $refundIdrTotal,
-            'grand_total' => round(($storeExpenseTotal + $rawMaterialExpenseTotal) + $purchaseTotal - $refundIdrTotal, 2),
+            'total_expense' => round($storeExpenseTotal + $rawMaterialExpenseTotal + $shippingTotal, 2),
+            'grand_total' => round(($storeExpenseTotal + $rawMaterialExpenseTotal + $shippingTotal) + ($purchaseTotal + $supplyPurchaseTotal) - $refundIdrTotal, 2),
         ];
 
         return [
@@ -325,7 +333,7 @@ class ReportController extends Controller
     {
         $details = OrderDetail::query()
             ->with([
-                'order:id,shipping_date,shipping_time,deleted_at',
+                'order:id,shipping_date,shipping_time,shipping_fee,deleted_at',
                 'bouquetUnit:id,name,type_id',
                 'bouquetUnit.type:id,name',
                 'inventoryItem:id,name',
@@ -342,12 +350,20 @@ class ReportController extends Controller
             ))
             ->values();
 
-        return $details->map(function (OrderDetail $detail, int $index): array {
+        $processedOrders = [];
+
+        return $details->map(function (OrderDetail $detail, int $index) use (&$processedOrders): array {
             $model = $this->resolveModelLabel($detail);
             $isMoneyBouquet = $this->isMoneyBouquet($detail, $model);
             $money = $isMoneyBouquet ? (float) ($detail->money_bouquet ?? 0) : 0.0;
             $total = (float) $detail->subtotal;
             $fee = max(0, $total - $money);
+
+            $gosend = 0.0;
+            if ($detail->order_id && ! in_array($detail->order_id, $processedOrders, true)) {
+                $gosend = (float) ($detail->order?->shipping_fee ?? 0);
+                $processedOrders[] = $detail->order_id;
+            }
 
             return [
                 'no' => $index + 1,
@@ -355,39 +371,11 @@ class ReportController extends Controller
                 'model' => $model,
                 'money' => round($money, 2),
                 'fee' => round($fee, 2),
-                'gosend' => 0.0,
-                'total' => round($total, 2),
+                'gosend' => round($gosend, 2),
+                'total' => round($total + $gosend, 2),
                 'order_id' => $detail->order_id,
             ];
         });
-    }
-
-    private function buildPurchaseRows(CarbonImmutable $start, CarbonImmutable $end): Collection
-    {
-        return StockMovement::query()
-            ->with('item:id,name')
-            ->where('type', 'in')
-            ->whereBetween('created_at', [$start->startOfDay(), $end->endOfDay()])
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->get()
-            ->map(function (StockMovement $movement, int $index): array {
-                return [
-                    'no' => $index + 1,
-                    'date' => $movement->created_at?->format('Y-m-d'),
-                    'item' => trim(implode(' - ', array_filter([
-                        $movement->item?->name,
-                        $movement->description,
-                    ]))),
-                    'rmb' => null,
-                    'idr' => round((float) $movement->total, 2),
-                    'freight' => null,
-                    'tracking_number' => null,
-                    'code' => null,
-                    'estimate_arrived' => null,
-                    'total' => round((float) $movement->total, 2),
-                ];
-            });
     }
 
     private function buildSupplyPurchaseRows(Collection $entries): Collection
@@ -398,6 +386,7 @@ class ReportController extends Controller
                 'date' => $entry->occurred_on?->format('Y-m-d'),
                 'item' => $entry->description,
                 'rmb' => (float) ($entry->amount_rmb ?? 0),
+                'rate' => (float) ($entry->exchange_rate ?? 0),
                 'idr' => round($entry->resolveAmountIdr(), 2),
                 'freight' => round((float) ($entry->freight_idr ?? 0), 2),
                 'tracking_number' => $entry->tracking_number,
@@ -437,7 +426,8 @@ class ReportController extends Controller
     private function resolveModelLabel(OrderDetail $detail): string
     {
         if ($detail->item_type === 'bouquet') {
-            $name = $detail->bouquetUnit?->type?->name ?? $detail->bouquetUnit?->name ?? 'BOUQUET';
+            // Prioritaskan nama Unit (item) daripada nama Type (kategori)
+            $name = $detail->bouquetUnit?->name ?? $detail->bouquetUnit?->type?->name ?? 'BOUQUET';
 
             return Str::upper(trim($name));
         }
@@ -451,8 +441,9 @@ class ReportController extends Controller
             return false;
         }
 
-        if (! $detail->money_bouquet) {
-            return false;
+        // Kalau ada nilai money_bouquet di DB (misal 50.000), anggap sebagai money bouquet
+        if ((float) $detail->money_bouquet > 0) {
+            return true;
         }
 
         return Str::contains(Str::lower($model), ['money', 'mb']);

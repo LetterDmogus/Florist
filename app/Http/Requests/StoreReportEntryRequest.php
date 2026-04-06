@@ -12,7 +12,7 @@ class StoreReportEntryRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasAnyRole(['super-admin', 'admin']);
+        return $this->user()->can('reports.manage');
     }
 
     public function rules(): array

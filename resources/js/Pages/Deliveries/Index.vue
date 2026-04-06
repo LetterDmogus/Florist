@@ -263,8 +263,20 @@ const applyDateFilter = () => {
     });
 };
 
+const formatShippingDate = (value) => {
+    if (!value) return '-';
+    const raw = String(value);
+    const parsed = new Date(raw.includes('T') ? raw : `${raw}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return raw.split('T')[0] ?? raw;
+    return new Intl.DateTimeFormat('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    }).format(parsed);
+};
+
 const formatSchedule = (delivery) => {
-    const date = delivery.order?.shipping_date || '-';
+    const date = formatShippingDate(delivery.order?.shipping_date);
     const time = String(delivery.order?.shipping_time || '').split(':').slice(0, 2).join(':');
 
     return `${date} ${time || ''}`.trim();
@@ -403,7 +415,7 @@ const formatSchedule = (delivery) => {
                         </option>
                     </select>
                     <p v-if="selectedOrder" class="text-xs text-muted-foreground">
-                        Jadwal: {{ selectedOrder.shipping_date }} {{ String(selectedOrder.shipping_time || '').split(':').slice(0, 2).join(':') }} • {{ selectedOrder.shipping_type }}
+                        Jadwal: {{ formatShippingDate(selectedOrder.shipping_date) }} {{ String(selectedOrder.shipping_time || '').split(':').slice(0, 2).join(':') }} • {{ selectedOrder.shipping_type }}
                     </p>
                     <InputError :message="form.errors.order_id" />
                 </div>

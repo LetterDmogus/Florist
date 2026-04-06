@@ -9,8 +9,10 @@ import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import BaseButton from '@/Components/BaseButton.vue';
+import GlobalDetailModal from '@/Components/GlobalDetailModal.vue';
+import axios from 'axios';
 import { Head, useForm } from '@inertiajs/vue3';
-import { ArrowUpRight, ArrowDownLeft, Plus, History, ShoppingBag, User, Truck, Clock } from 'lucide-vue-next';
+import { ArrowUpRight, ArrowDownLeft, Plus, History, ShoppingBag, User, Truck, Clock, Info } from 'lucide-vue-next';
 
 const props = defineProps({
     movements: Object,
@@ -23,8 +25,31 @@ const props = defineProps({
 });
 
 const showModal = ref(false);
+const showQuickDetail = ref(false);
+const detailItem = ref(null);
+const auditData = ref(null);
 const deliveryMode = ref('new');
+
+const openQuickDetail = async (item) => {
+    detailItem.value = item;
+    showQuickDetail.value = true;
+    
+    try {
+        const { data } = await axios.get(route('stock-movements.show', item.id));
+        auditData.value = data.audit_trail;
+    } catch (e) {
+        console.error('Failed to fetch audit trail', e);
+    }
+};
+
+const closeQuickDetail = () => {
+    showQuickDetail.value = false;
+    detailItem.value = null;
+    auditData.value = null;
+};
+
 const deliverySearch = ref('');
+const customerSearch = ref('');
 const itemSearch = ref('');
 const itemOptions = ref([]);
 const itemLookupLoading = ref(false);
@@ -44,7 +69,7 @@ const form = useForm({
     new_customer_name: '',
     new_customer_phone_number: '',
     shipping_date: new Date().toISOString().split('T')[0],
-    shipping_time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }),
+    shipping_time: new Date().toTimeString().slice(0, 5),
     shipping_type: 'pickup',
     delivery_mode: 'new',
     delivery_id: '',
@@ -52,6 +77,22 @@ const form = useForm({
     delivery_recipient_phone: '',
     delivery_full_address: '',
     down_payment: 0,
+    freight: '',
+    no_resi: '',
+    kode: '',
+    estimate_arrived: '',
+    price_rmb_at_the_time: '',
+});
+
+const filteredCustomers = computed(() => {
+    const search = customerSearch.value.toLowerCase().trim();
+    if (!search) return props.customers || [];
+
+    return props.customers.filter((customer) => {
+        return customer.name?.toLowerCase().includes(search)
+            || customer.phone_number?.toLowerCase().includes(search)
+            || (Array.isArray(customer.aliases) && customer.aliases.some(alias => alias?.toLowerCase().includes(search)));
+    });
 });
 
 const filteredDeliveries = computed(() => {
@@ -230,7 +271,12 @@ onBeforeUnmount(() => {
 const submit = () => {
     form.post(route('stock-movements.store'), {
         preserveScroll: true,
-        onSuccess: () => closeModal(),
+        onSuccess: () => {
+            closeModal();
+        },
+        onError: (errors) => {
+            console.error('Validation Errors:', errors);
+        }
     });
 };
 </script>
@@ -258,8 +304,10 @@ const submit = () => {
                     :columns="columns" 
                     :filters="filters"
                     routeName="stock-movements.index"
+                    viewRoute="stock-movements.show"
                     :showRecycleBin="false"
                     searchPlaceholder="Search movements..."
+                    @view-detail="openQuickDetail"
                 >
                     <template #cell-created_at="{ item }">
                         <span class="text-xs text-muted-foreground">{{ formatDate(item.created_at) }}</span>
@@ -387,15 +435,22 @@ const submit = () => {
                                 <TextInput v-model="form.quantity" id="quantity" type="number" min="1" class="w-full" placeholder="0" />
                                 <InputError :message="form.errors.quantity" />
                             </div>
-                            <div v-if="form.type === 'in'" class="space-y-2">
-                                <InputLabel for="price" value="Harga Modal (IDR)" />
-                                <TextInput v-model="form.price_at_the_time" id="price" type="number" class="w-full" placeholder="0" />
-                                <InputError :message="form.errors.price_at_the_time" />
-                            </div>
-                            <div v-else class="space-y-2">
+                            <div v-if="form.type !== 'in'" class="space-y-2">
                                 <InputLabel value="Estimasi Total" />
                                 <div class="px-4 py-2.5 bg-pink-50/50 rounded-xl border border-pink-100 text-sm font-bold text-pink-900">
                                     {{ formatCurrency((selectedItem?.price || 0) * (form.quantity || 0)) }}
+                                </div>
+                            </div>
+                            <div v-if="form.type === 'in'" class="col-span-2 grid grid-cols-2 gap-4">
+                                <div class="space-y-2">
+                                    <InputLabel for="price" value="Harga Modal (IDR)" />
+                                    <TextInput v-model="form.price_at_the_time" id="price" type="number" class="w-full" placeholder="0" />
+                                    <InputError :message="form.errors.price_at_the_time" />
+                                </div>
+                                <div class="space-y-2">
+                                    <InputLabel for="price_rmb" value="Harga Modal (RMB)" />
+                                    <TextInput v-model="form.price_rmb_at_the_time" id="price_rmb" type="number" step="0.01" class="w-full" placeholder="0" />
+                                    <InputError :message="form.errors.price_rmb_at_the_time" />
                                 </div>
                             </div>
                         </div>
@@ -440,9 +495,10 @@ const submit = () => {
                             <!-- Existing Customer -->
                             <div v-if="form.customer_mode === 'existing'" class="space-y-2">
                                 <InputLabel value="Pilih Customer" />
+                                <input v-model="customerSearch" type="text" placeholder="Cari nama/nomor handphone..." class="w-full rounded-xl border-blue-100 text-[10px] focus:ring-blue-300 bg-white">
                                 <select v-model="form.customer_id" class="w-full rounded-xl border-blue-200 text-sm focus:border-blue-400 focus:ring-blue-300">
-                                    <option value="" disabled>Cari nama customer...</option>
-                                    <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }} ({{ c.phone_number }})</option>
+                                    <option value="" disabled>Pilih customer...</option>
+                                    <option v-for="c in filteredCustomers" :key="c.id" :value="c.id">{{ c.name }} ({{ c.phone_number }})</option>
                                 </select>
                                 <InputError :message="form.errors.customer_id" />
                             </div>
@@ -541,20 +597,79 @@ const submit = () => {
                         </div>
                     </div>
 
+
+                    <!-- Purchase Extra Info (Only for IN) -->
+                    <div v-else-if="form.type === 'in'" class="space-y-6 bg-emerald-50/30 p-6 rounded-[2rem] border border-emerald-100 animate-in fade-in slide-in-from-right-4">
+                        <div class="flex items-center gap-2 text-emerald-700 mb-2">
+                            <ArrowUpRight class="w-5 h-5" />
+                            <h4 class="font-bold">Informasi Detail Khusus Beli</h4>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="space-y-1">
+                                <InputLabel value="Ongkos Kirim / Freight (IDR)" />
+                                <TextInput v-model="form.freight" type="number" class="w-full border-emerald-200" placeholder="0" />
+                                <InputError :message="form.errors.freight" />
+                            </div>
+                            <div class="space-y-1">
+                                <InputLabel value="No. Resi" />
+                                <TextInput v-model="form.no_resi" class="w-full border-emerald-200" />
+                                <InputError :message="form.errors.no_resi" />
+                            </div>
+                            <div class="space-y-1">
+                                <InputLabel value="Kode (Opsional)" />
+                                <TextInput v-model="form.kode" class="w-full border-emerald-200" />
+                                <InputError :message="form.errors.kode" />
+                            </div>
+                            <div class="space-y-1">
+                                <InputLabel value="Estimate Arrived" />
+                                <TextInput v-model="form.estimate_arrived" type="date" class="w-full border-emerald-200" />
+                                <InputError :message="form.errors.estimate_arrived" />
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Placeholder for other types to keep layout balanced -->
                     <div v-else class="hidden md:flex flex-col items-center justify-center bg-gray-50 rounded-[2rem] border border-dashed border-gray-200 p-8 text-center text-muted-foreground">
                         <History class="w-12 h-12 mb-4 opacity-20" />
-                        <p class="text-sm">Informasi tambahan akan muncul jika memilih tipe <b>Jual</b>.</p>
+                        <p class="text-sm">Informasi tambahan akan muncul jika memilih tipe <b>Jual</b> atau <b>Beli</b>.</p>
                     </div>
                 </div>
 
                 <div class="flex justify-end gap-3 pt-4 border-t border-pink-100">
                     <SecondaryButton @click="closeModal" type="button">Batal</SecondaryButton>
-                    <BaseButton variant="success" size="lg" :disabled="form.processing">
+                    <BaseButton as="submit" variant="success" size="lg" :disabled="form.processing">
                         {{ form.processing ? 'Menyimpan...' : 'Simpan Pergerakan' }}
                     </BaseButton>
                 </div>
             </form>
         </Modal>
+
+        <!-- Global Quick Detail Modal -->
+        <GlobalDetailModal 
+            :show="showQuickDetail" 
+            :item="detailItem" 
+            :audit="auditData" 
+            type="Movement"
+            @close="closeQuickDetail"
+        >
+            <template #extra-info="{ item }">
+                <div class="col-span-2 grid grid-cols-2 gap-4">
+                    <div class="p-4 bg-pink-50/50 rounded-2xl border-2 border-pink-100/50 flex flex-col gap-1">
+                        <div class="flex items-center gap-2 text-pink-400">
+                            <Info class="w-3.5 h-3.5" />
+                            <span class="text-[10px] font-bold uppercase tracking-widest text-pink-900">Tipe & Qty</span>
+                        </div>
+                        <span class="text-sm font-black text-pink-950 uppercase">{{ item.type }}: {{ item.type === 'in' ? '+' : '-' }}{{ item.quantity }}</span>
+                    </div>
+                    <div v-if="item.order_id || item.reference_type" class="p-4 bg-pink-50/50 rounded-2xl border-2 border-pink-100/50 flex flex-col gap-1">
+                        <div class="flex items-center gap-2 text-pink-400">
+                            <ShoppingBag class="w-3.5 h-3.5" />
+                            <span class="text-[10px] font-bold uppercase tracking-widest text-pink-900">Referensi</span>
+                        </div>
+                        <span class="text-sm font-black text-pink-950">{{ item.order_id ? 'Order #' + item.order_id : (item.reference_type || 'Manual') }}</span>
+                    </div>
+                </div>
+            </template>
+        </GlobalDetailModal>
     </AppLayout>
 </template>

@@ -74,11 +74,12 @@ class CreateOrderAction
                 // Buat order details
                 foreach ($resolvedDetails as $index => $detail) {
                     $subtotal = $this->calculateSubtotal($detail);
+                    $quantity = $this->resolveQuantity($detail);
 
                     OrderDetail::create([
                         'order_id' => $order->id,
                         'item_type' => $detail['item_type'],
-                        'quantity' => $this->resolveQuantity($detail),
+                        'quantity' => $quantity,
                         'subtotal' => $subtotal,
                         'bouquet_unit_id' => $detail['bouquet_unit_id'] ?? null,
                         'inventory_item_id' => $detail['inventory_item_id'] ?? null,
@@ -87,9 +88,27 @@ class CreateOrderAction
                         'sender_name' => $detail['sender_name'] ?? null,
                     ]);
 
+                    // Handle stock reduction for inventory items
+                    if ($detail['item_type'] === 'inventory_item' && $detail['inventory_item_id']) {
+                        $item = ItemUnit::lockForUpdate()->find($detail['inventory_item_id']);
+                        if ($item) {
+                            $item->decrement('stock', $quantity);
+
+                            \App\Models\StockMovement::create([
+                                'item_id' => $item->id,
+                                'user_id' => $request->user()->id,
+                                'order_id' => $order->id,
+                                'quantity' => $quantity,
+                                'type' => 'sold',
+                                'price_at_the_time' => $item->price,
+                                'total' => $subtotal,
+                                'description' => "Penjualan via Order #{$order->id}",
+                            ]);
+                        }
+                    }
+
                     // Handle image upload for custom bouquet unit
-                    if (($detail['mode'] ?? null) === 'custom' && $request->hasFile("details.{$index}.custom_image")) {
-                        $customUnit = BouquetUnit::find($detail['bouquet_unit_id']);
+                    if (($detail['mode'] ?? null) === 'custom' && $request->hasFile("details.{$index}.custom_image")) {                        $customUnit = BouquetUnit::find($detail['bouquet_unit_id']);
                         if ($customUnit) {
                             $customUnit->addMediaFromRequest("details.{$index}.custom_image")
                                 ->toMediaCollection('images');
@@ -198,9 +217,10 @@ class CreateOrderAction
 
         if ($detail['item_type'] === 'bouquet') {
             $unit = BouquetUnit::findOrFail($detail['bouquet_unit_id']);
-            $price = $detail['money_bouquet'] ?? $unit->price;
+            $price = $unit->price;
+            $money = $detail['money_bouquet'] ?? 0;
 
-            return (float) $price * $quantity;
+            return (float) ($price + $money) * $quantity;
         }
 
         $unit = ItemUnit::findOrFail($detail['inventory_item_id']);
@@ -219,12 +239,6 @@ class CreateOrderAction
         $detail['quantity'] = 1;
 
         if (($detail['mode'] ?? 'catalog') !== 'custom') {
-            if (! isset($detail['money_bouquet']) || $detail['money_bouquet'] === null) {
-                $detail['money_bouquet'] = (float) BouquetUnit::query()
-                    ->findOrFail($detail['bouquet_unit_id'])
-                    ->price;
-            }
-
             return $detail;
         }
 
@@ -234,7 +248,6 @@ class CreateOrderAction
 
         $customUnit = $this->createCustomBouquetUnit($detail);
         $detail['bouquet_unit_id'] = $customUnit->id;
-        $detail['money_bouquet'] = $detail['custom_price'];
 
         return $detail;
     }
@@ -260,10 +273,13 @@ class CreateOrderAction
 
         return BouquetUnit::create([
             'type_id' => $customType->id,
-            'serial_number' => $this->generateCustomSerialNumber(),
+            'serial_number' => ! empty($detail['custom_serial_number'])
+                ? trim((string) $detail['custom_serial_number'])
+                : $this->generateCustomSerialNumber(),
             'name' => trim((string) $detail['custom_name']),
             'description' => $detail['custom_note'] ?? null,
             'price' => $detail['custom_price'],
+            'is_active' => false,
         ]);
     }
 

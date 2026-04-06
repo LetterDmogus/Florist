@@ -1,8 +1,9 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, reactive } from 'vue';
 import { router } from '@inertiajs/vue3';
-import { Search, Trash2, Filter, ChevronLeft, ChevronRight, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-vue-next';
+import { Search, Trash2, ChevronLeft, ChevronRight, ArrowUpDown, ChevronUp, ChevronDown, Eye } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
+
 const debounce = (fn, delay) => {
     let timeoutId;
     return (...args) => {
@@ -32,6 +33,10 @@ const props = defineProps({
         type: String,
         required: true,
     },
+    viewRoute: {
+        type: String,
+        default: null,
+    },
     showRecycleBin: {
         type: Boolean,
         default: true,
@@ -40,8 +45,14 @@ const props = defineProps({
     additionalParams: {
         type: Object,
         default: () => ({}),
+    },
+    extraFilters: {
+        type: Object,
+        default: () => ({}),
     }
 });
+
+const emit = defineEmits(['view-detail']);
 
 const search = ref(props.filters.search || '');
 const sortBy = ref(props.filters.sort_by || 'created_at');
@@ -61,6 +72,7 @@ const isTrashed = ref(parseTrashedFilter(props.filters.trashed));
 
 const buildQueryParams = () => ({
     ...props.additionalParams,
+    ...props.extraFilters,
     search: search.value,
     sort_by: sortBy.value,
     sort_dir: sortDir.value,
@@ -82,6 +94,10 @@ watch(search, () => {
 watch(perPage, () => {
     updateFilters();
 });
+
+watch(() => props.extraFilters, () => {
+    updateFilters();
+}, { deep: true });
 
 const toggleTrashed = () => {
     isTrashed.value = !isTrashed.value;
@@ -127,6 +143,8 @@ const goToPage = (url) => {
             </div>
 
             <div class="flex items-center gap-2">
+                <slot name="extra-filters" />
+                
                 <select 
                     v-model="perPage"
                     class="bg-white border border-secondary rounded-xl text-sm focus:ring-2 focus:ring-primary/50 transition-all py-2"
@@ -149,7 +167,6 @@ const goToPage = (url) => {
                     <Trash2 class="w-4 h-4" />
                     {{ isTrashed ? 'Trashed' : 'Recycle' }}
                 </button>
-                <slot name="extra-filters" />
             </div>
         </div>
 
@@ -175,7 +192,7 @@ const goToPage = (url) => {
                                     </template>
                                 </div>
                             </th>
-                            <th class="px-6 py-4 font-semibold text-muted-foreground text-right sticky right-0 bg-secondary/50 shadow-[-10px_0_10px_-10px_rgba(0,0,0,0.1)]">Actions</th>
+                            <th class="px-6 py-4 font-semibold text-muted-foreground text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-secondary/50">
@@ -194,8 +211,17 @@ const goToPage = (url) => {
                                     {{ col.render ? col.render(item) : item[col.key] }}
                                 </slot>
                             </td>
-                            <td class="px-6 py-4 text-right sticky right-0 bg-white group-hover:bg-secondary/20 transition-colors shadow-[-10px_0_10px_-10px_rgba(0,0,0,0.1)]">
+                            <td class="px-6 py-4 text-right">
                                 <div class="flex justify-end items-center gap-2">
+                                    <button
+                                        v-if="viewRoute"
+                                        type="button"
+                                        @click="emit('view-detail', item)"
+                                        class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-100"
+                                        title="Lihat Detail & Audit Trail"
+                                    >
+                                        <Eye class="w-4 h-4" />
+                                    </button>
                                     <slot name="actions" :item="item" />
                                 </div>
                             </td>

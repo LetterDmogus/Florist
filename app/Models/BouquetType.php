@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Traits\HasAuditTrail;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,7 +14,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
 
 class BouquetType extends Model
 {
-    use LogsActivity, SoftDeletes;
+    use HasAuditTrail, LogsActivity, SoftDeletes;
 
     protected $fillable = [
         'category_id',

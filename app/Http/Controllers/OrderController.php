@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\CreateOrderAction;
 use App\Actions\SyncOrderShippingExpenseAction;
+use App\Actions\UpdateOrderAction;
 use App\Http\Requests\StoreOrderRequest;
 use App\Http\Requests\UpdateOrderRequest;
 use App\Models\BouquetCategory;
@@ -15,7 +16,9 @@ use App\Models\Delivery;
 use App\Models\ItemUnit;
 use App\Models\Order;
 use App\Models\OrderDetail;
+use App\Models\ReportEntry;
 use App\Models\SiteSetting;
+use App\Models\StockMovement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -133,6 +136,7 @@ class OrderController extends Controller
             ],
             'orderStatusSummary' => $this->buildOrderStatusSummary(),
             'canManageOrderStatus' => (bool) $request->user()?->can('orders.status.update'),
+            'canDeleteOrder' => (bool) $request->user()?->can('orders.delete'),
         ]);
     }
 
@@ -162,7 +166,8 @@ class OrderController extends Controller
             ->where(function ($query) use ($contains): void {
                 $query
                     ->where('name', 'like', $contains)
-                    ->orWhere('phone_number', 'like', $contains);
+                    ->orWhere('phone_number', 'like', $contains)
+                    ->orWhere('aliases', 'like', $contains);
             })
             ->orderByRaw(
                 'CASE
@@ -229,8 +234,94 @@ class OrderController extends Controller
 
         $order = $action->handle($request);
 
-        return redirect()->route('orders.show', $order)
+        return redirect()->route('orders.status.index')
             ->with('success', 'Order berhasil dibuat.');
+    }
+
+    public function edit(Request $request, Order $order): Response
+    {
+        abort_unless($request->user()?->can('orders.edit'), 403);
+
+        $order->load([
+            'customer',
+            'delivery',
+            'orderDetails.bouquetUnit.type.category',
+            'orderDetails.inventoryItem.category',
+        ]);
+
+        return Inertia::render('Orders/Edit', [
+            'order' => $order,
+            ...$this->cashierPayload($request),
+        ]);
+    }
+
+    public function update(UpdateOrderRequest $request, Order $order, UpdateOrderAction $action): RedirectResponse
+    {
+        abort_unless($request->user()?->can('orders.edit'), 403);
+
+        $action->handle($request, $order);
+
+        return redirect()->route('orders.status.index')
+            ->with('success', 'Order berhasil diperbarui.');
+    }
+
+    private function cashierPayload(Request $request): array
+    {
+        $catalogSearch = trim((string) $request->string('catalog_search')->toString());
+        $catalogCategoryId = trim((string) $request->string('catalog_category_id')->toString());
+
+        if ($catalogCategoryId !== '' && ! ctype_digit($catalogCategoryId)) {
+            $catalogCategoryId = '';
+        }
+
+        $bouquetUnits = BouquetUnit::query()
+            ->with(['type.category', 'media'])
+            ->where('is_active', true)
+            ->when($catalogSearch !== '', function ($query) use ($catalogSearch): void {
+                $query->where(function ($builder) use ($catalogSearch): void {
+                    $builder
+                        ->where('name', 'like', "%{$catalogSearch}%")
+                        ->orWhere('serial_number', 'like', "%{$catalogSearch}%")
+                        ->orWhereHas('type', function ($typeQuery) use ($catalogSearch): void {
+                            $typeQuery
+                                ->where('name', 'like', "%{$catalogSearch}%")
+                                ->orWhereHas('category', fn ($categoryQuery) => $categoryQuery->where('name', 'like', "%{$catalogSearch}%"));
+                        });
+                });
+            })
+            ->when(
+                $catalogCategoryId !== '',
+                fn ($query) => $query->whereHas('type', fn ($typeQuery) => $typeQuery->where('category_id', (int) $catalogCategoryId))
+            )
+            ->orderBy('name')
+            ->paginate(12, ['*'], 'bouquet_page')
+            ->withQueryString();
+
+        $inventoryItems = ItemUnit::query()
+            ->with(['category', 'media'])
+            ->where('stock', '>', 0)
+            ->when($catalogSearch !== '', function ($query) use ($catalogSearch): void {
+                $query->where(function ($q) use ($catalogSearch) {
+                    $q->where('name', 'like', "%{$catalogSearch}%")
+                        ->orWhere('serial_number', 'like', "%{$catalogSearch}%");
+                });
+            })
+            ->orderBy('name')
+            ->paginate(12, ['*'], 'inventory_page')
+            ->withQueryString();
+
+        return [
+            'bouquetUnits' => $bouquetUnits,
+            'inventoryItems' => $inventoryItems,
+            'bouquetCategories' => BouquetCategory::query()
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'catalogFilters' => [
+                'search' => $catalogSearch,
+                'category_id' => $catalogCategoryId,
+            ],
+            'canCustomBouquet' => (bool) $request->user()?->can('input custom bouquet'),
+        ];
     }
 
     public function show(Order $order): Response
@@ -249,66 +340,100 @@ class OrderController extends Controller
         ]);
     }
 
-    public function update(UpdateOrderRequest $request, Order $order): RedirectResponse
-    {
-        abort_unless($request->user()?->can('orders.create'), 403);
-
-        $validated = $request->validated();
-
-        DB::transaction(function () use ($order, $validated, $request): void {
-            /** @var Order $lockedOrder */
-            $lockedOrder = Order::query()
-                ->whereKey($order->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            $nextShippingType = (string) ($validated['shipping_type'] ?? $lockedOrder->shipping_type);
-            $shippingFee = $nextShippingType === 'delivery'
-                ? max(0, (float) ($validated['shipping_fee'] ?? $lockedOrder->shipping_fee ?? 0))
-                : 0.0;
-
-            $lockedOrder->fill([
-                ...$validated,
-                'shipping_fee' => $shippingFee,
-            ]);
-
-            $itemsSubtotal = (float) $lockedOrder->orderDetails()->sum('subtotal');
-
-            if ((float) ($lockedOrder->down_payment ?? 0) > $itemsSubtotal) {
-                throw ValidationException::withMessages([
-                    'down_payment' => 'Down payment tidak boleh lebih besar dari subtotal item.',
-                ]);
-            }
-
-            $lockedOrder->total = round($itemsSubtotal + $shippingFee, 2);
-
-            if (! array_key_exists('payment_status', $validated)) {
-                $lockedOrder->payment_status = $this->resolvePaymentStatus(
-                    (float) $lockedOrder->total,
-                    (float) ($lockedOrder->down_payment ?? 0),
-                );
-            }
-
-            $lockedOrder->save();
-
-            app(SyncOrderShippingExpenseAction::class)->handle($lockedOrder, $request->user()->id);
-        });
-
-        return redirect()->route('orders.show', $order)
-            ->with('success', 'Order berhasil diperbarui.');
-    }
-
     public function destroy(Request $request, Order $order): RedirectResponse
     {
         abort_unless($request->user()?->can('orders.delete'), 403);
 
-        DB::transaction(function () use ($order, $request): void {
-            $order->delete();
-            app(SyncOrderShippingExpenseAction::class)->handle($order, $request->user()->id);
+        $orderId = $order->id;
+        $needsReset = false;
+
+        DB::transaction(function () use ($order, &$needsReset, $orderId): void {
+            // 1. Ambil semua custom bouquet unit yang HANYA digunakan oleh order ini
+            $customUnitIds = $order->orderDetails()
+                ->where('item_type', 'bouquet')
+                ->whereNotNull('bouquet_unit_id')
+                ->get()
+                ->filter(function (OrderDetail $detail) {
+                    $unit = $detail->bouquetUnit;
+                    return $unit && $unit->type && $unit->type->is_custom;
+                })
+                ->pluck('bouquet_unit_id')
+                ->all();
+
+            // 2. Jika ada item katalog, aktifkan kembali
+            $order->orderDetails()
+                ->where('item_type', 'bouquet')
+                ->whereNotNull('bouquet_unit_id')
+                ->get()
+                ->each(function (OrderDetail $detail) {
+                    $unit = $detail->bouquetUnit;
+                    if ($unit && $unit->type && !$unit->type->is_custom) {
+                        $unit->update(['is_active' => true]);
+                    }
+                });
+
+            // 3. Kembalikan stok item inventory jika ada pergerakan stok penjualan
+            StockMovement::where('order_id', $orderId)
+                ->where('type', 'sold')
+                ->get()
+                ->each(function (StockMovement $movement) {
+                    $item = $movement->item;
+                    if ($item) {
+                        $item->increment('stock', $movement->quantity);
+                    }
+                    $movement->forceDelete();
+                });
+
+            // 4. Putuskan hubungan dan hapus detail order (Penting: Hapus detail dulu!)
+            $order->orderDetails()->update(['bouquet_unit_id' => null]);
+            $order->orderDetails()->forceDelete();
+
+            // 5. Hapus custom bouquet unit yang sudah tidak punya referensi lagi
+            if (!empty($customUnitIds)) {
+                foreach ($customUnitIds as $unitId) {
+                    $isStillUsed = OrderDetail::where('bouquet_unit_id', $unitId)->exists();
+                    if (!$isStillUsed) {
+                        BouquetUnit::where('id', $unitId)->forceDelete();
+                    }
+                }
+            }
+
+            // 6. Hapus delivery dan laporan ongkir
+            $order->delivery()?->forceDelete();
+            ReportEntry::where('order_id', $orderId)
+                ->where('category', 'shipping_expense')
+                ->forceDelete();
+
+            // 7. Hapus order utama
+            $order->forceDelete();
+
+            // 8. Cek apakah perlu reset numbering
+            $maxId = (int) Order::query()->withTrashed()->max('id');
+            if ($orderId >= $maxId) {
+                $needsReset = true;
+            }
         });
 
-        return redirect()->route('orders.index')
-            ->with('success', 'Order berhasil dihapus.');
+        // Jalankan DDL (ALTER TABLE) di luar transaksi untuk menghindari "Implicit Commit"
+        if ($needsReset) {
+            $maxId = (int) Order::query()->withTrashed()->max('id');
+            $this->resetAutoIncrement('orders', $maxId);
+        }
+
+        return redirect()->route('orders.status.index')
+            ->with('success', 'Order berhasil di-discard. Stok telah dikembalikan dan item katalog diaktifkan kembali.');
+    }
+
+    private function resetAutoIncrement(string $table, int $maxId): void
+    {
+        $driver = DB::getDriverName();
+        if ($driver === 'sqlite') {
+            // For SQLite, if the table is empty, we should reset to 0
+            DB::statement("UPDATE sqlite_sequence SET seq = ? WHERE name = ?", [$maxId, $table]);
+        } elseif ($driver === 'mysql') {
+            $nextId = $maxId + 1;
+            DB::statement("ALTER TABLE `{$table}` AUTO_INCREMENT = {$nextId}");
+        }
     }
 
     public function updateStatus(Request $request, Order $order): RedirectResponse
@@ -502,11 +627,6 @@ class OrderController extends Controller
         ]);
 
         $subtotal = $this->resolveSubtotal($validated);
-        if ($validated['item_type'] === 'bouquet' && ! isset($validated['money_bouquet'])) {
-            $validated['money_bouquet'] = (float) BouquetUnit::query()
-                ->findOrFail($validated['bouquet_unit_id'])
-                ->price;
-        }
 
         DB::transaction(function () use ($order, $validated, $subtotal): void {
             /** @var Order $lockedOrder */
@@ -574,61 +694,15 @@ class OrderController extends Controller
     {
         if ($detail['item_type'] === 'bouquet') {
             $unit = BouquetUnit::findOrFail($detail['bouquet_unit_id']);
-            $price = $detail['money_bouquet'] ?? $unit->price;
+            $price = $unit->price;
+            $money = $detail['money_bouquet'] ?? 0;
 
-            return (float) $price * $detail['quantity'];
+            return (float) ($price + $money) * $detail['quantity'];
         }
 
         $unit = ItemUnit::findOrFail($detail['inventory_item_id']);
 
         return (float) $unit->price * $detail['quantity'];
-    }
-
-    private function cashierPayload(Request $request): array
-    {
-        $catalogSearch = trim((string) $request->string('catalog_search')->toString());
-        $catalogCategoryId = trim((string) $request->string('catalog_category_id')->toString());
-
-        if ($catalogCategoryId !== '' && ! ctype_digit($catalogCategoryId)) {
-            $catalogCategoryId = '';
-        }
-
-        $bouquetUnits = BouquetUnit::query()
-            ->with(['type.category', 'media'])
-            ->where('is_active', true)
-            ->when($catalogSearch !== '', function ($query) use ($catalogSearch): void {
-                $query->where(function ($builder) use ($catalogSearch): void {
-                    $builder
-                        ->where('name', 'like', "%{$catalogSearch}%")
-                        ->orWhere('serial_number', 'like', "%{$catalogSearch}%")
-                        ->orWhereHas('type', function ($typeQuery) use ($catalogSearch): void {
-                            $typeQuery
-                                ->where('name', 'like', "%{$catalogSearch}%")
-                                ->orWhereHas('category', fn ($categoryQuery) => $categoryQuery->where('name', 'like', "%{$catalogSearch}%"));
-                        });
-                });
-            })
-            ->when(
-                $catalogCategoryId !== '',
-                fn ($query) => $query->whereHas('type', fn ($typeQuery) => $typeQuery->where('category_id', (int) $catalogCategoryId))
-            )
-            ->orderBy('name')
-            ->paginate(12, ['*'], 'catalog_page')
-            ->withQueryString();
-
-        return [
-            'customers' => [],
-            'bouquetUnits' => $bouquetUnits,
-            'bouquetCategories' => BouquetCategory::query()
-                ->orderBy('name')
-                ->get(['id', 'name']),
-            'catalogFilters' => [
-                'search' => $catalogSearch,
-                'category_id' => $catalogCategoryId,
-            ],
-            'deliveryReferences' => [],
-            'canCustomBouquet' => (bool) $request->user()?->can('input custom bouquet'),
-        ];
     }
 
     private function resolvePaymentStatus(float $total, float $downPayment): string

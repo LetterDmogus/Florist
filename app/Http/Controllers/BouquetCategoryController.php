@@ -42,6 +42,22 @@ class BouquetCategoryController extends Controller
         ]);
     }
 
+    public function show(Request $request, BouquetCategory $bouquet_category): Response|\Illuminate\Http\JsonResponse
+    {
+        if ($request->wantsJson()) {
+            return response()->json([
+                'item' => $bouquet_category,
+                'audit_trail' => $bouquet_category->getAuditTrail(),
+            ]);
+        }
+
+        return Inertia::render('Bouquets/Index', [
+            'item' => $bouquet_category,
+            'audit_trail' => $bouquet_category->getAuditTrail(),
+            'tab' => 'categories',
+        ]);
+    }
+
     public function store(StoreBouquetCategoryRequest $request): RedirectResponse
     {
         \Illuminate\Support\Facades\DB::transaction(function () use ($request) {
@@ -58,16 +74,16 @@ class BouquetCategoryController extends Controller
         return redirect()->back()->with('success', 'Kategori bouquet berhasil ditambahkan beserta tipe kustom bawaan.');
     }
 
-    public function update(UpdateBouquetCategoryRequest $request, BouquetCategory $bouquetCategory): RedirectResponse
+    public function update(UpdateBouquetCategoryRequest $request, BouquetCategory $bouquet_category): RedirectResponse
     {
-        $bouquetCategory->update($request->validated());
+        $bouquet_category->update($request->validated());
 
         return redirect()->back()->with('success', 'Kategori bouquet berhasil diperbarui.');
     }
 
-    public function destroy(BouquetCategory $bouquetCategory): RedirectResponse
+    public function destroy(BouquetCategory $bouquet_category): RedirectResponse
     {
-        $bouquetCategory->delete();
+        $bouquet_category->delete();
 
         return redirect()->back()->with('success', 'Kategori bouquet berhasil dihapus secara temporer.');
     }

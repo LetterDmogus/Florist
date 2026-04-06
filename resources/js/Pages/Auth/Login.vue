@@ -69,17 +69,7 @@ const submit = () => {
                 <InputError class="mt-2" :message="form.errors.password" />
             </div>
 
-            <div class="block mt-4">
-                <label class="flex items-center">
-                    <Checkbox v-model:checked="form.remember" name="remember" />
-                    <span class="ms-2 text-sm text-pink-900/60">Ingat saya</span>
-                </label>
-            </div>
-
-            <div class="flex items-center justify-end mt-6">
-                <Link v-if="canResetPassword" :href="route('password.request')" class="underline text-sm text-pink-700 hover:text-pink-950 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500">
-                    Lupa password?
-                </Link>
+            <div class="flex items-center justify-end mt-8">
 
                 <PrimaryButton class="ms-4" :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
                     Masuk ke Sistem

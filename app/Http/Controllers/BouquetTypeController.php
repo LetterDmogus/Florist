@@ -47,6 +47,22 @@ class BouquetTypeController extends Controller
         ]);
     }
 
+    public function show(Request $request, BouquetType $bouquet_type): Response|\Illuminate\Http\JsonResponse
+    {
+        if ($request->wantsJson()) {
+            return response()->json([
+                'item' => $bouquet_type,
+                'audit_trail' => $bouquet_type->getAuditTrail(),
+            ]);
+        }
+
+        return Inertia::render('Bouquets/Index', [
+            'item' => $bouquet_type,
+            'audit_trail' => $bouquet_type->getAuditTrail(),
+            'tab' => 'types',
+        ]);
+    }
+
     public function store(StoreBouquetTypeRequest $request): RedirectResponse
     {
         BouquetType::create($request->validated());
@@ -54,20 +70,20 @@ class BouquetTypeController extends Controller
         return redirect()->back()->with('success', 'Tipe bouquet berhasil ditambahkan.');
     }
 
-    public function update(UpdateBouquetTypeRequest $request, BouquetType $bouquetType): RedirectResponse
+    public function update(UpdateBouquetTypeRequest $request, BouquetType $bouquet_type): RedirectResponse
     {
-        $bouquetType->update($request->validated());
+        $bouquet_type->update($request->validated());
 
         return redirect()->back()->with('success', 'Tipe bouquet berhasil diperbarui.');
     }
 
-    public function destroy(BouquetType $bouquetType): RedirectResponse
+    public function destroy(BouquetType $bouquet_type): RedirectResponse
     {
-        if ($bouquetType->is_custom) {
+        if ($bouquet_type->is_custom) {
             return redirect()->back()->with('error', 'Tipe kustom bawaan tidak dapat dihapus.');
         }
 
-        $bouquetType->delete();
+        $bouquet_type->delete();
 
         return redirect()->back()->with('success', 'Tipe bouquet berhasil dihapus secara temporer.');
     }

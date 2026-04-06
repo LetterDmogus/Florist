@@ -47,6 +47,22 @@ class ItemCategoryController extends Controller
         ]);
     }
 
+    public function show(Request $request, ItemCategory $item_category): Response|\Illuminate\Http\JsonResponse
+    {
+        if ($request->wantsJson()) {
+            return response()->json([
+                'item' => $item_category,
+                'audit_trail' => $item_category->getAuditTrail(),
+            ]);
+        }
+
+        return Inertia::render('ItemUnits/Show', [
+            'item' => $item_category,
+            'audit_trail' => $item_category->getAuditTrail(),
+            'tab' => 'categories',
+        ]);
+    }
+
     public function store(StoreItemCategoryRequest $request): RedirectResponse
     {
         ItemCategory::create($request->validated());
@@ -55,17 +71,17 @@ class ItemCategoryController extends Controller
             ->with('success', 'Kategori item berhasil ditambahkan.');
     }
 
-    public function update(UpdateItemCategoryRequest $request, ItemCategory $itemCategory): RedirectResponse
+    public function update(UpdateItemCategoryRequest $request, ItemCategory $item_category): RedirectResponse
     {
-        $itemCategory->update($request->validated());
+        $item_category->update($request->validated());
 
         return redirect()->route('item-categories.index')
             ->with('success', 'Kategori item berhasil diperbarui.');
     }
 
-    public function destroy(ItemCategory $itemCategory): RedirectResponse
+    public function destroy(ItemCategory $item_category): RedirectResponse
     {
-        $itemCategory->delete();
+        $item_category->delete();
 
         return redirect()->route('item-categories.index')
             ->with('success', 'Kategori item berhasil dihapus.');

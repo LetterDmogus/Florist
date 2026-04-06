@@ -11,7 +11,7 @@ class UpdateDeliveryRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasAnyRole(['super-admin', 'admin', 'manager', 'kasir']);
+        return $this->user()->can('deliveries.manage');
     }
 
     public function rules(): array

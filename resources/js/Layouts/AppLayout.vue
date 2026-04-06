@@ -1,17 +1,30 @@
 <script setup>
-import { ref, onMounted } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { ref, onMounted, watch } from 'vue';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import Banner from '@/Components/Banner.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import Sidebar from '@/Components/Sidebar.vue';
+import ToastContainer from '@/Components/ToastContainer.vue';
+import { toast } from '@/lib/toast';
 import { Menu, X, Bell } from 'lucide-vue-next';
 
 defineProps({
     title: String,
 });
 
+const page = usePage();
 const isSidebarOpen = ref(false);
+
+// Flash Message Handler
+watch(() => page.props.flash, (newFlash) => {
+    if (newFlash?.success) {
+        toast.success(newFlash.success);
+    }
+    if (newFlash?.error) {
+        toast.error(newFlash.error);
+    }
+}, { deep: true, immediate: true });
 
 const toggleSidebar = () => {
     isSidebarOpen.value = !isSidebarOpen.value;
@@ -30,7 +43,7 @@ const logout = () => {
 <template>
     <div class="min-h-screen bg-[#fff8fc] font-sans text-foreground flex">
         <Head :title="title" />
-        <Banner />
+        <ToastContainer />
 
         <!-- Sidebar (Desktop) -->
         <aside class="hidden md:flex md:w-72 md:flex-col md:fixed md:inset-y-0 z-[50]">
@@ -68,10 +81,7 @@ const logout = () => {
                 </div>
 
                 <div class="flex items-center gap-2 md:gap-4">
-                    <!-- Notifications (Placeholder) -->
-                    <button class="p-2 rounded-xl text-pink-700 hover:bg-pink-100 hover:text-pink-900 transition-all duration-200">
-                        <Bell class="w-5 h-5" />
-                    </button>
+                    <!-- Notifications (Placeholder Removed) -->
 
                     <!-- Profile Dropdown -->
                     <div class="relative ms-2">
@@ -140,6 +150,11 @@ const logout = () => {
 body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+}
+
+.min-h-screen {
+    overflow-x: hidden;
 }
 
 /* Scrollbar styling for main content */

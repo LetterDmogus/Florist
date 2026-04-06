@@ -1,8 +1,9 @@
 <script setup>
 import { Head } from '@inertiajs/vue3';
 import { onMounted } from 'vue';
-import { Printer, ArrowLeft } from 'lucide-vue-next';
+import { Printer, ArrowLeft, Download } from 'lucide-vue-next';
 import BaseButton from '@/Components/BaseButton.vue';
+import html2canvas from 'html2canvas';
 
 const props = defineProps({
     order: Object,
@@ -30,6 +31,27 @@ const printReceipt = () => {
 const goBack = () => {
     window.history.back();
 };
+
+const exportAsPNG = async () => {
+    const el = document.querySelector('.receipt-content');
+    if (!el) return;
+    
+    try {
+        const canvas = await html2canvas(el, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff'
+        });
+        
+        const link = document.createElement('a');
+        link.download = `Struk_Order_${props.order.id}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    } catch (e) {
+        console.error('Failed to export to PNG', e);
+        alert('Gagal mengekspor struk menjadi PNG.');
+    }
+};
 </script>
 
 <template>
@@ -37,15 +59,21 @@ const goBack = () => {
         <Head title="Struk Pesanan" />
 
         <!-- UI Controls (Hidden on Print) -->
-        <div class="w-full max-w-[80mm] mb-6 flex justify-between print:hidden">
+        <div class="w-full max-w-[80mm] mb-6 flex justify-between items-center gap-2 print:hidden">
             <BaseButton variant="secondary" size="sm" @click="goBack">
                 <ArrowLeft class="w-4 h-4" />
                 Kembali
             </BaseButton>
-            <BaseButton variant="primary" size="sm" @click="printReceipt">
-                <Printer class="w-4 h-4" />
-                Cetak Struk
-            </BaseButton>
+            <div class="flex gap-2">
+                <BaseButton variant="secondary" size="sm" @click="exportAsPNG">
+                    <Download class="w-4 h-4 mr-1" />
+                    PNG
+                </BaseButton>
+                <BaseButton variant="primary" size="sm" @click="printReceipt">
+                    <Printer class="w-4 h-4 mr-1" />
+                    Cetak
+                </BaseButton>
+            </div>
         </div>
 
         <!-- Receipt Paper -->

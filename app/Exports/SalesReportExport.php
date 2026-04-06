@@ -128,18 +128,11 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
                     ->setRGB('FFF1F7');
             }
         }
-
-        $highestRow = $sheet->getHighestRow();
-        $sheet->getStyle("C{$this->tableHeaderRow}:C{$highestRow}")->getAlignment()->setWrapText(true);
+        $highestRow = $sheet->getHighestRow()-1;
+        $this->tableHeaderRow--;
+        $sheet->getStyle("B{$this->tableHeaderRow}:C{$highestRow}")->getAlignment()->setWrapText(true);
         $sheet->getStyle("A{$this->tableHeaderRow}:B{$this->dataEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->freezePane('A11');
-
-        if ($this->profitTitleRow > 0) {
-            $sheet->getStyle("B{$this->profitTitleRow}")
-                ->getFont()
-                ->setBold(true)
-                ->setColor(new Color('9D174D'));
-        }
 
         if ($this->netProfitRow > 0) {
             $sheet->getStyle("A{$this->netProfitRow}:G{$this->netProfitRow}")

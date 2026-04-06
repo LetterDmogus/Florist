@@ -1,7 +1,9 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import BaseButton from '@/Components/BaseButton.vue';
+import { Pencil, ArrowLeft } from 'lucide-vue-next';
 
 const props = defineProps({
     order: {
@@ -83,10 +85,30 @@ const remainingPayment = computed(() => {
 
         <div class="space-y-6">
             <section class="rounded-3xl border border-pink-200 bg-white p-5 shadow-sm">
-                <h1 class="text-xl font-bold text-pink-950">Order #{{ order.id }}</h1>
-                <p class="mt-1 text-sm text-pink-700">
-                    {{ order.customer?.name }} • {{ formatShippingDate(order.shipping_date) }} {{ formatShippingTime(order.shipping_time) }} • {{ order.shipping_type }}
-                </p>
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <h1 class="text-xl font-bold text-pink-950">Order #{{ order.id }}</h1>
+                        <p class="mt-1 text-sm text-pink-700">
+                            {{ order.customer?.name }} • {{ formatShippingDate(order.shipping_date) }} {{ formatShippingTime(order.shipping_time) }} • {{ order.shipping_type }}
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <BaseButton as="Link" :href="route('orders.status.index')" variant="secondary" size="sm">
+                            <ArrowLeft class="mr-2 h-4 w-4" />
+                            Kembali
+                        </BaseButton>
+                        <BaseButton
+                            v-if="order.order_status !== 'completed' && order.order_status !== 'canceled'"
+                            as="Link"
+                            :href="route('orders.edit', order.id)"
+                            variant="primary"
+                            size="sm"
+                        >
+                            <Pencil class="mr-2 h-4 w-4" />
+                            Edit Order
+                        </BaseButton>
+                    </div>
+                </div>
 
                 <div class="mt-4 grid gap-3 sm:grid-cols-3">
                     <div class="rounded-2xl bg-pink-50 p-3">
@@ -134,7 +156,14 @@ const remainingPayment = computed(() => {
                         </thead>
                         <tbody class="divide-y divide-pink-100 text-sm">
                             <tr v-for="detail in detailRows" :key="detail.id">
-                                <td class="px-3 py-2 font-medium text-pink-950">{{ detail.item_name ?? '-' }}</td>
+                                <td class="px-3 py-2 font-medium text-pink-950">
+                                    {{ detail.item_name ?? '-' }}
+                                    <div v-if="detail.item_type === 'bouquet'" class="text-xs text-pink-500 mt-1 font-normal break-words whitespace-pre-wrap">
+                                        <div v-if="detail.sender_name"><b>From:</b> {{ detail.sender_name }}</div>
+                                        <div v-if="detail.greeting_card"><b>Card:</b> {{ detail.greeting_card }}</div>
+                                        <div v-if="detail.money_bouquet > 0"><b>Uang di Buket:</b> {{ formatCurrency(detail.money_bouquet) }}</div>
+                                    </div>
+                                </td>
                                 <td class="px-3 py-2 capitalize text-pink-800">{{ detail.item_type }}</td>
                                 <td class="px-3 py-2 text-pink-800">{{ detail.quantity }}</td>
                                 <td class="px-3 py-2 font-semibold text-pink-900">{{ formatCurrency(detail.subtotal) }}</td>

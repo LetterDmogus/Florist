@@ -25,6 +25,7 @@ class RoleAndPermissionSeeder extends Seeder
             'Orders' => [
                 'orders.view',
                 'orders.create',
+                'orders.edit',
                 'input custom bouquet',
                 'orders.status.view',
                 'orders.status.update',
@@ -54,6 +55,7 @@ class RoleAndPermissionSeeder extends Seeder
             ],
             'Reports' => [
                 'reports.view',
+                'reports.manage',
                 'reports.export',
             ],
             'System' => [
@@ -84,6 +86,7 @@ class RoleAndPermissionSeeder extends Seeder
             'dashboard.view',
             'orders.view',
             'orders.create',
+            'orders.edit',
             'input custom bouquet',
             'orders.status.view',
             'orders.status.update',
@@ -99,6 +102,7 @@ class RoleAndPermissionSeeder extends Seeder
             'deliveries.view',
             'deliveries.manage',
             'reports.view',
+            'reports.manage',
             'reports.export',
             'logs.view',
         ]);

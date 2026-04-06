@@ -245,127 +245,9 @@ const deleteEntry = (entry) => {
                 </div>
 
                 <section class="rounded-2xl border border-pink-100 bg-white p-5">
-                    <h3 class="font-semibold text-pink-900 mb-3">Pembelian</h3>
-                    <div class="overflow-x-auto rounded-xl border border-pink-100">
-                        <table class="min-w-full text-sm">
-                            <thead class="bg-pink-50 text-pink-900">
-                                <tr>
-                                    <th class="px-3 py-2 text-left">No</th>
-                                    <th class="px-3 py-2 text-left">Date</th>
-                                    <th class="px-3 py-2 text-left">Item</th>
-                                    <th class="px-3 py-2 text-right">RMB</th>
-                                    <th class="px-3 py-2 text-right">IDR</th>
-                                    <th class="px-3 py-2 text-right">Freight</th>
-                                    <th class="px-3 py-2 text-left">No Resi</th>
-                                    <th class="px-3 py-2 text-left">Kode</th>
-                                    <th class="px-3 py-2 text-left">Estimate Arrived</th>
-                                    <th class="px-3 py-2 text-right">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="row in purchaseRows" :key="`purchase-${row.no}`" class="border-t border-pink-100">
-                                    <td class="px-3 py-2">{{ row.no }}</td>
-                                    <td class="px-3 py-2">{{ row.date || '-' }}</td>
-                                    <td class="px-3 py-2">{{ row.item || '-' }}</td>
-                                    <td class="px-3 py-2 text-right">{{ row.rmb ? formatNumber(row.rmb) : '-' }}</td>
-                                    <td class="px-3 py-2 text-right">{{ formatCurrency(row.idr) }}</td>
-                                    <td class="px-3 py-2 text-right">{{ row.freight ? formatCurrency(row.freight) : '-' }}</td>
-                                    <td class="px-3 py-2">{{ row.tracking_number || '-' }}</td>
-                                    <td class="px-3 py-2">{{ row.code || '-' }}</td>
-                                    <td class="px-3 py-2">{{ row.estimate_arrived || '-' }}</td>
-                                    <td class="px-3 py-2 text-right font-medium">{{ formatCurrency(row.total) }}</td>
-                                </tr>
-                                <tr v-if="purchaseRows.length === 0">
-                                    <td colspan="10" class="px-3 py-5 text-center text-muted-foreground">Belum ada data pembelian untuk periode ini.</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-semibold text-pink-900">Riwayat Belanja & Keuangan</h3>
                     </div>
-                </section>
-
-                <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <div class="rounded-2xl border border-pink-100 bg-white p-5">
-                        <h3 class="font-semibold text-pink-900 mb-3">Supply Purchase</h3>
-                        <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
-                            <div v-for="row in supplyPurchaseRows" :key="`supply-${row.no}`" class="rounded-xl border border-pink-100 p-3 text-sm">
-                                <div class="flex justify-between gap-2">
-                                    <p class="font-medium">{{ row.item }}</p>
-                                    <p>{{ formatCurrency(row.total) }}</p>
-                                </div>
-                                <p class="text-xs text-muted-foreground">{{ row.date || '-' }}</p>
-                            </div>
-                            <p v-if="supplyPurchaseRows.length === 0" class="text-sm text-muted-foreground">Belum ada data.</p>
-                        </div>
-                    </div>
-
-                    <div class="rounded-2xl border border-pink-100 bg-white p-5">
-                        <h3 class="font-semibold text-pink-900 mb-3">Biaya Toko</h3>
-                        <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
-                            <div v-for="row in storeExpenseRows" :key="`store-${row.no}`" class="rounded-xl border border-pink-100 p-3 text-sm">
-                                <div class="flex justify-between gap-2">
-                                    <p class="font-medium">{{ row.description }}</p>
-                                    <p>{{ formatCurrency(row.amount) }}</p>
-                                </div>
-                                <p class="text-xs text-muted-foreground">{{ row.date || '-' }}</p>
-                            </div>
-                            <p v-if="storeExpenseRows.length === 0" class="text-sm text-muted-foreground">Belum ada data.</p>
-                        </div>
-                    </div>
-
-                    <div class="rounded-2xl border border-pink-100 bg-white p-5">
-                        <h3 class="font-semibold text-pink-900 mb-3">Biaya Bahan Baku</h3>
-                        <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
-                            <div v-for="row in rawMaterialRows" :key="`raw-${row.no}`" class="rounded-xl border border-pink-100 p-3 text-sm">
-                                <div class="flex justify-between gap-2">
-                                    <p class="font-medium">{{ row.description }}</p>
-                                    <p>{{ formatCurrency(row.amount) }}</p>
-                                </div>
-                                <p class="text-xs text-muted-foreground">{{ row.date || '-' }}</p>
-                            </div>
-                            <p v-if="rawMaterialRows.length === 0" class="text-sm text-muted-foreground">Belum ada data.</p>
-                        </div>
-                    </div>
-
-                    <div class="rounded-2xl border border-pink-100 bg-white p-5">
-                        <h3 class="font-semibold text-pink-900 mb-3">Shipping & Refund</h3>
-                        <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
-                            <div v-for="row in shippingRows" :key="`shipping-${row.no}`" class="rounded-xl border border-pink-100 p-3 text-sm">
-                                <div class="flex justify-between gap-2">
-                                    <p class="font-medium">{{ row.description }}</p>
-                                    <p>{{ formatCurrency(row.amount) }}</p>
-                                </div>
-                                <p class="text-xs text-muted-foreground">{{ row.date || '-' }}</p>
-                            </div>
-                            <div v-for="row in refundRows" :key="`refund-${row.no}`" class="rounded-xl border border-pink-100 p-3 text-sm">
-                                <div class="flex justify-between gap-2">
-                                    <p class="font-medium">{{ row.description }}</p>
-                                    <p>{{ formatCurrency(row.idr) }}</p>
-                                </div>
-                                <p class="text-xs text-muted-foreground">{{ row.date || '-' }} • RMB {{ formatNumber(row.rmb) }}</p>
-                            </div>
-                            <p v-if="shippingRows.length === 0 && refundRows.length === 0" class="text-sm text-muted-foreground">Belum ada data.</p>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="rounded-2xl border border-pink-100 bg-white p-5">
-                    <h3 class="font-semibold text-pink-900 mb-3">Rekap Pembelian</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Total Pembelian</span><span>{{ formatCurrency(purchaseSummary.purchase_total) }}</span></div>
-                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Total Supply Purchase</span><span>{{ formatCurrency(purchaseSummary.supply_purchase_total) }}</span></div>
-                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Total Biaya Toko</span><span>{{ formatCurrency(purchaseSummary.store_expense_total) }}</span></div>
-                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Total Biaya Bahan Baku</span><span>{{ formatCurrency(purchaseSummary.raw_material_expense_total) }}</span></div>
-                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Total Biaya</span><span>{{ formatCurrency(purchaseSummary.total_expense) }}</span></div>
-                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Refund IDR</span><span>{{ formatCurrency(purchaseSummary.refund_idr_total) }}</span></div>
-                        <div class="flex justify-between rounded-xl bg-pink-100 p-3 md:col-span-2 font-semibold">
-                            <span>Grand Total (Total Biaya + Pembelian - Refund)</span>
-                            <span>{{ formatCurrency(purchaseSummary.grand_total) }}</span>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="rounded-2xl border border-pink-100 bg-white p-5">
-                    <h3 class="font-semibold text-pink-900 mb-3">Entry Manual Report</h3>
                     <div class="overflow-x-auto rounded-xl border border-pink-100">
                         <table class="min-w-full text-sm">
                             <thead class="bg-pink-50 text-pink-900">
@@ -405,6 +287,24 @@ const deleteEntry = (entry) => {
                         </table>
                     </div>
                 </section>
+
+                <section class="rounded-2xl border border-pink-100 bg-white p-5">
+                    <h3 class="font-semibold text-pink-900 mb-3">Rekap Keuangan</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Total Pembelian Fisik (Stock)</span><span>{{ formatCurrency(purchaseSummary.purchase_total) }}</span></div>
+                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Total Supply Purchase (Impor/Luar)</span><span>{{ formatCurrency(purchaseSummary.supply_purchase_total) }}</span></div>
+                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Total Biaya Toko</span><span>{{ formatCurrency(purchaseSummary.store_expense_total) }}</span></div>
+                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Total Biaya Bahan Baku</span><span>{{ formatCurrency(purchaseSummary.raw_material_expense_total) }}</span></div>
+                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Total Biaya Terdata</span><span>{{ formatCurrency(purchaseSummary.total_expense) }}</span></div>
+                        <div class="flex justify-between rounded-xl bg-pink-50 p-3"><span>Refund IDR</span><span>{{ formatCurrency(purchaseSummary.refund_idr_total) }}</span></div>
+                        <div class="flex justify-between rounded-xl bg-pink-100 p-3 md:col-span-2 font-semibold">
+                            <span>Grand Total (Total Biaya + Pembelian - Refund)</span>
+                            <span>{{ formatCurrency(purchaseSummary.grand_total) }}</span>
+                        </div>
+                    </div>
+                </section>
+
+                    <!-- Table section was moved ABOVE the summary section -->
             </div>
         </div>
 
@@ -459,14 +359,14 @@ const deleteEntry = (entry) => {
                         <TextInput v-model="form.exchange_rate" type="number" class="w-full" />
                         <InputError :message="form.errors.exchange_rate" />
                     </div>
-                    <div class="space-y-1">
-                        <InputLabel value="Freight IDR (opsional)" />
+                </div>
+
+                <div v-if="isPurchaseSupply || isRefund" class="grid gap-3 sm:grid-cols-4">
+                    <div class="space-y-1" v-if="isPurchaseSupply">
+                        <InputLabel value="Freight IDR" />
                         <TextInput v-model="form.freight_idr" type="number" class="w-full" />
                         <InputError :message="form.errors.freight_idr" />
                     </div>
-                </div>
-
-                <div v-if="isPurchaseSupply || isRefund" class="grid gap-3 sm:grid-cols-3">
                     <div class="space-y-1">
                         <InputLabel value="No Resi (opsional)" />
                         <TextInput v-model="form.tracking_number" class="w-full" />

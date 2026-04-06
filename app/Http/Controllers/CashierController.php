@@ -44,7 +44,8 @@ class CashierController extends Controller
             ->where(function ($query) use ($contains): void {
                 $query
                     ->where('name', 'like', $contains)
-                    ->orWhere('phone_number', 'like', $contains);
+                    ->orWhere('phone_number', 'like', $contains)
+                    ->orWhere('aliases', 'like', $contains);
             })
             ->orderByRaw(
                 'CASE

@@ -11,7 +11,7 @@ class UpdateCustomerRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasAnyRole(['super-admin', 'admin', 'kasir']);
+        return $this->user()->can('customers.manage');
     }
 
     public function rules(): array

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Traits\HasAuditTrail;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -14,7 +16,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
 
 class Order extends Model
 {
-    use LogsActivity, SoftDeletes;
+    use HasAuditTrail, HasFactory, LogsActivity, SoftDeletes;
 
     public const ORDER_STATUSES = [
         'pending',
@@ -23,24 +25,27 @@ class Order extends Model
         'ready',
         'on_delivery',
         'completed',
+        'canceled',
     ];
 
     public const ORDER_STATUS_LABELS = [
         'pending' => 'Belum diproses',
         'confirmed' => 'Sudah diproses',
-        'processing' => 'Sedang diproses',
+        'processing' => 'Belum di-pickup',
         'ready' => 'Siap di-pickup',
         'on_delivery' => 'Sedang diantar',
         'completed' => 'Selesai (History)',
+        'canceled' => 'Dibatalkan',
     ];
 
     public const ORDER_STATUS_NEXT = [
-        'pending' => ['confirmed'],
-        'confirmed' => ['processing'],
-        'processing' => ['ready'],
-        'ready' => ['on_delivery', 'completed'],
-        'on_delivery' => ['completed'],
+        'pending' => ['confirmed', 'canceled'],
+        'confirmed' => ['processing', 'canceled'],
+        'processing' => ['ready', 'canceled'],
+        'ready' => ['on_delivery', 'completed', 'canceled'],
+        'on_delivery' => ['completed', 'canceled'],
         'completed' => [],
+        'canceled' => [],
     ];
 
     protected $fillable = [
@@ -70,10 +75,7 @@ class Order extends Model
 
     public function getActivitylogOptions(): LogOptions
     {
-        return LogOptions::defaults()
-            ->useLogName('orders')
-            ->logFillable()
-            ->logOnlyDirty();
+        return LogOptions::defaults()->logFillable()->logOnlyDirty();
     }
 
     public function user(): BelongsTo

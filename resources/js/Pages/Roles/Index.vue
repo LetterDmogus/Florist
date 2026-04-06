@@ -37,7 +37,7 @@ const restoreRole = (id) => {
                 <h2 class="font-semibold text-xl text-pink-950 leading-tight">
                     Role & Permissions
                 </h2>
-                <Link :href="route('roles.create')">
+                <Link v-if="$can('roles.manage')" :href="route('roles.create')">
                     <BaseButton variant="primary" class="rounded-xl flex items-center gap-2">
                         <Plus class="w-4 h-4" />
                         Tambah Role Baru
@@ -82,7 +82,7 @@ const restoreRole = (id) => {
                     </template>
 
                     <template #actions="{ item }">
-                        <div class="flex items-center gap-1" v-if="!item.deleted_at">
+                        <div class="flex items-center gap-1" v-if="!item.deleted_at && $can('roles.manage')">
                             <Link :href="route('roles.edit', item.id)">
                                 <BaseButton variant="ghost" size="icon" class="h-8 w-8">
                                     <Pencil class="w-4 h-4" />
@@ -92,7 +92,7 @@ const restoreRole = (id) => {
                                 <Trash2 class="w-4 h-4" />
                             </BaseButton>
                         </div>
-                        <BaseButton v-else variant="secondary" size="sm" class="h-8" @click="restoreRole(item.id)">
+                        <BaseButton v-else-if="item.deleted_at && $can('roles.manage')" variant="secondary" size="sm" class="h-8" @click="restoreRole(item.id)">
                             <RotateCcw class="w-4 h-4 mr-1" />
                             Restore
                         </BaseButton>
