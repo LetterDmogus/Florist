@@ -25,7 +25,8 @@ defineProps({
         <nav class="sticky top-0 z-50 w-full border-b border-pink-100 bg-white/80 backdrop-blur-md">
             <div class="container flex h-16 items-center justify-between px-4 md:px-8">
                 <div class="flex items-center gap-2">
-                    <span class="text-xl font-bold tracking-tight text-pink-950">Bees Fleur</span>
+                    <img src="/images/bees-fleur-logo.svg" alt="Bees Fleur Logo" class="h-8 w-auto">
+                    <span class="sr-only">Bees Fleur</span>
                 </div>
                 
                 <div v-if="canLogin" class="flex items-center gap-4">
@@ -42,7 +43,7 @@ defineProps({
                             :href="route('login')"
                             class="inline-flex h-9 items-center justify-center rounded-xl bg-pink-100 px-5 text-sm font-bold text-pink-700 shadow-sm transition-all hover:bg-pink-200 hover:scale-105 active:scale-95"
                         >
-                            Admin Aja
+                            Login
                         </Link>
                     </template>
                 </div>
@@ -53,9 +54,10 @@ defineProps({
             <!-- Hero Section -->
             <section class="container flex flex-col items-center justify-center space-y-8 py-24 text-center md:py-32">
                 <div class="space-y-6 max-w-4xl">
-                    <h1 class="text-5xl font-extrabold tracking-tight text-pink-950 sm:text-6xl md:text-7xl">
-                        Bees Fleur <span class="text-pink-500">Florist</span>
-                    </h1>
+                    <div class="flex justify-center mb-6">
+                        <img src="/images/bees-fleur.png" alt="Bees Fleur Logo" class="h-32 md:h-48 w-auto">
+                    </div>
+                    <h1 class="sr-only">Bees Fleur Florist</h1>
                     <p class="mx-auto max-w-[700px] text-pink-900/70 md:text-xl/relaxed lg:text-2xl/relaxed font-medium">
                         Sistem Informasi Kasir Terintegrasi Manajemen Stok Berbasis SKU
                     </p>

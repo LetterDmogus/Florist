@@ -49,7 +49,7 @@ class DashboardController extends Controller
 
         // Menggunakan Eloquent Model (Kembali ke selera awal)
         $ordersToday = Order::whereDate('created_at', $today)->count();
-        $processingOrders = Order::where('order_status', 'processing')->count();
+        $readyOrders = Order::where('order_status', 'ready')->count();
 
         $newCustomersThisWeek = Customer::where('created_at', '>=', $startOfWeek)->count();
 
@@ -62,7 +62,7 @@ class DashboardController extends Controller
         return [
             'ordersToday' => [
                 'value' => (string) $ordersToday,
-                'description' => $processingOrders . ' pesanan belum di-pickup',
+                'description' => $readyOrders . ' pesanan siap di-pickup',
                 'trend' => $this->getTrend(Order::class, 'created_at', 'day'),
                 'trendUp' => true,
             ],

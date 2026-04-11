@@ -20,8 +20,6 @@ class Order extends Model
 
     public const ORDER_STATUSES = [
         'pending',
-        'confirmed',
-        'processing',
         'ready',
         'on_delivery',
         'completed',
@@ -30,18 +28,14 @@ class Order extends Model
 
     public const ORDER_STATUS_LABELS = [
         'pending' => 'Belum diproses',
-        'confirmed' => 'Sudah diproses',
-        'processing' => 'Belum di-pickup',
         'ready' => 'Siap di-pickup',
-        'on_delivery' => 'Sedang diantar',
+        'on_delivery' => 'sedang diantar',
         'completed' => 'Selesai (History)',
         'canceled' => 'Dibatalkan',
     ];
 
     public const ORDER_STATUS_NEXT = [
-        'pending' => ['confirmed', 'canceled'],
-        'confirmed' => ['processing', 'canceled'],
-        'processing' => ['ready', 'canceled'],
+        'pending' => ['ready', 'canceled'],
         'ready' => ['on_delivery', 'completed', 'canceled'],
         'on_delivery' => ['completed', 'canceled'],
         'completed' => [],
