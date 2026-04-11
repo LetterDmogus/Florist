@@ -49,7 +49,7 @@ class CreateOrderAction
 
                 if ($downPayment > $itemsTotal) {
                     throw ValidationException::withMessages([
-                        'down_payment' => 'Down payment tidak boleh lebih besar dari subtotal item.',
+                        'down_payment' => 'Down payment tidak boleh melebihi total item (Subtotal + Uang Buket).',
                     ]);
                 }
 

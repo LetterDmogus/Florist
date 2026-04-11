@@ -348,7 +348,7 @@ const submitUpdate = () => {
         quantity: item.quantity,
         bouquet_unit_id: item.bouquet_unit_id,
         inventory_item_id: item.inventory_item_id,
-        money_bouquet: item.mode === 'custom' ? Number(item.unit_price) : (item.money_amount || null),
+        money_bouquet: item.money_amount || null,
         greeting_card: item.greeting_card || null,
         sender_name: item.sender_name || null,
         custom_category_id: item.custom_category_id || null,
@@ -614,32 +614,31 @@ watch(deliverySearch, debounce(() => fetchDeliveryOptions(), 300));
                                             </button>
                                         </div>
                                         <p class="text-[10px] text-pink-500 font-bold uppercase tracking-wider mb-1">{{ item.display_category }}</p>
-                                        <div v-if="item.money_amount" class="mb-2">
-                                            <span class="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-lg font-bold border border-emerald-200">
-                                                + Uang: {{ formatCurrency(item.money_amount) }}
-                                            </span>
-                                        </div>
-                                        
-                                        <div class="flex items-center justify-between">
-                                            <div class="flex items-center bg-white rounded-xl border-2 border-pink-100 overflow-hidden">
-                                                <button @click="item.quantity > 1 && item.quantity--" class="px-2 py-1 hover:bg-pink-50 text-pink-600 disabled:opacity-30" :disabled="item.item_type === 'bouquet'">-</button>
-                                                <input v-model="item.quantity" type="number" min="1" class="w-10 text-center border-none text-xs font-bold focus:ring-0" :disabled="item.item_type === 'bouquet'">
-                                                <button @click="item.quantity++" class="px-2 py-1 hover:bg-pink-50 text-pink-600 disabled:opacity-30" :disabled="item.item_type === 'bouquet'">+</button>
+                                        <div v-if="item.item_type === 'bouquet'" class="mt-3 space-y-3">
+                                            <div>
+                                                <label class="text-[10px] font-bold text-pink-800 uppercase mb-1 block">Uang di Buket (Money Bouquet)</label>
+                                                <div class="relative">
+                                                    <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-pink-400 font-bold">Rp</span>
+                                                    <input 
+                                                        v-model="item.money_amount" 
+                                                        type="number" 
+                                                        class="w-full pl-8 py-2 text-[11px] rounded-xl border-2 border-pink-100 bg-white text-emerald-600 font-bold focus:ring-pink-300 transition-all"
+                                                        placeholder="0"
+                                                    >
+                                                </div>
                                             </div>
-                                            <p class="font-black text-pink-900 text-sm">{{ formatCurrency(lineTotal(item)) }}</p>
-                                        </div>
-                                    </div>
-                                </div>
 
-                                <!-- Greeting & Sender -->
-                                <div v-if="item.item_type === 'bouquet'" class="mt-4 grid grid-cols-2 gap-3">
-                                    <div class="relative">
-                                        <input v-model="item.sender_name" type="text" placeholder="Nama Pengirim" class="w-full pl-8 py-2 text-[11px] rounded-xl border-2 border-pink-100 bg-white focus:ring-pink-300 transition-all">
-                                        <User class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-pink-300" />
-                                    </div>
-                                    <div class="relative">
-                                        <input v-model="item.greeting_card" type="text" placeholder="Kartu Ucapan..." class="w-full pl-8 py-2 text-[11px] rounded-xl border-2 border-pink-100 bg-white focus:ring-pink-300 transition-all">
-                                        <MessageSquare class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-pink-300" />
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div class="relative">
+                                                    <input v-model="item.sender_name" type="text" placeholder="Nama Pengirim" class="w-full pl-8 py-2 text-[11px] rounded-xl border-2 border-pink-100 bg-white focus:ring-pink-300 transition-all">
+                                                    <User class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-pink-300" />
+                                                </div>
+                                                <div class="relative">
+                                                    <input v-model="item.greeting_card" type="text" placeholder="Kartu Ucapan..." class="w-full pl-8 py-2 text-[11px] rounded-xl border-2 border-pink-100 bg-white focus:ring-pink-300 transition-all">
+                                                    <MessageSquare class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-pink-300" />
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -802,14 +801,19 @@ watch(deliverySearch, debounce(() => fetchDeliveryOptions(), 300));
                                     <input v-model="form.shipping_fee" type="number" class="w-full pl-8 py-2 rounded-xl border-2 border-pink-100 text-right text-sm font-bold focus:ring-pink-300 transition-all shadow-sm">
                                 </div>
                             </div>
-                            <div class="flex items-center justify-between gap-4">
-                                <div class="flex items-center gap-2">
-                                    <CreditCard class="w-4 h-4 text-pink-600" />
-                                    <label class="text-sm font-bold text-pink-900">Down Payment (DP)</label>
+                            <div class="space-y-1">
+                                <div class="flex items-center justify-between gap-4">
+                                    <div class="flex items-center gap-2">
+                                        <CreditCard class="w-4 h-4 text-pink-600" />
+                                        <label class="text-sm font-bold text-pink-900">Down Payment (DP)</label>
+                                    </div>
+                                    <div class="relative w-36">
+                                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-pink-400 font-bold">Rp</span>
+                                        <input v-model="form.down_payment" type="number" class="w-full pl-8 py-2 rounded-xl border-2 border-pink-100 text-right text-sm font-bold focus:ring-pink-300 transition-all shadow-sm" :class="{'border-red-500': form.down_payment > cartTotal}">
+                                    </div>
                                 </div>
-                                <div class="relative w-36">
-                                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-pink-400 font-bold">Rp</span>
-                                    <input v-model="form.down_payment" type="number" class="w-full pl-8 py-2 rounded-xl border-2 border-pink-100 text-right text-sm font-bold focus:ring-pink-300 transition-all shadow-sm">
+                                <div v-if="form.down_payment > cartTotal" class="text-[10px] text-red-500 font-bold text-right mt-1">
+                                    DP tidak boleh melebihi subtotal item ({{ formatCurrency(cartTotal) }})
                                 </div>
                             </div>
                         </div>

@@ -591,7 +591,7 @@ watch(
                     <div>
                         <h3 class="text-lg font-bold text-pink-950">Detail Order #{{ selectedOrder.id }}</h3>
                         <p class="mt-1 text-xs text-pink-700">
-                            {{ selectedOrder.customer?.name ?? '-' }} •
+                            {{ selectedOrder.customer?.name ?? '-' }} ({{ selectedOrder.customer?.phone_number ?? '-' }}) •
                             {{ formatShippingDate(selectedOrder.shipping_date) }} {{ formatShippingTime(selectedOrder.shipping_time) }} •
                             {{ selectedOrder.shipping_type }}
                         </p>

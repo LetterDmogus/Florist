@@ -64,7 +64,7 @@ class UpdateOrderAction
 
             if ($downPayment > $itemsTotal) {
                 throw ValidationException::withMessages([
-                    'down_payment' => 'Down payment tidak boleh lebih besar dari subtotal item.',
+                    'down_payment' => 'Down payment tidak boleh melebihi total item (Subtotal + Uang Buket).',
                 ]);
             }
 
@@ -119,18 +119,11 @@ class UpdateOrderAction
                 // Create new custom unit only if it's a new detail line
                 $customUnit = $this->createCustomBouquetUnit($detailInput);
                 $bouquetUnitId = $customUnit->id;
-                $moneyBouquetInput = $detailInput['custom_price'];
             }
             
             $unit = BouquetUnit::findOrFail($bouquetUnitId);
-            
-            if (($detailInput['mode'] ?? 'catalog') === 'custom') {
-                $subtotal = (float) $moneyBouquetInput;
-                $moneyBouquetRecord = $moneyBouquetInput;
-            } else {
-                $subtotal = (float) $unit->price + (float) ($moneyBouquetInput ?? 0);
-                $moneyBouquetRecord = $moneyBouquetInput;
-            }
+            $moneyBouquetRecord = $moneyBouquetInput;
+            $subtotal = (float) $unit->price + (float) ($moneyBouquetRecord ?? 0);
             
             $quantity = 1;
         } else {
