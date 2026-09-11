@@ -44,6 +44,7 @@ class StoreOrderRequest extends FormRequest
     {
         return [
             'request_id' => ['required', 'uuid'],
+            'order_type' => ['nullable', Rule::in(['bouquet', 'inventory'])],
             'customer_mode' => ['required', Rule::in(['existing', 'new'])],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'new_customer_name' => ['nullable', 'string', 'max:255'],

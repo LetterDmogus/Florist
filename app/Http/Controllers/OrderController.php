@@ -35,6 +35,7 @@ class OrderController extends Controller
     {
         $order->load([
             'customer',
+            'delivery',
             'user',
             'orderDetails.bouquetUnit.type',
             'orderDetails.inventoryItem.category',
@@ -47,6 +48,7 @@ class OrderController extends Controller
                 'address' => SiteSetting::getValue('address', 'Jl. Mawar No. 123, Jakarta'),
                 'phone' => SiteSetting::getValue('phone', '081234567890'),
                 'receipt_note' => SiteSetting::getValue('receipt_note', 'Terima kasih telah berbelanja di Bees Fleur!'),
+                'logo_url' => SiteSetting::getValue('logo_url', '/images/bees-fleur.png'),
             ],
         ]);
     }
@@ -100,6 +102,8 @@ class OrderController extends Controller
             'desc',
         );
 
+        $showHidden = $request->boolean('show_hidden', false);
+
         $orders = Order::with([
             'customer',
             'user',
@@ -107,6 +111,7 @@ class OrderController extends Controller
             'orderDetails.bouquetUnit',
             'orderDetails.inventoryItem',
         ])
+            ->when(! $showHidden, fn ($q) => $q->where('is_hidden', false))
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($builder) use ($search): void {
                     if (is_numeric($search)) {
@@ -133,8 +138,9 @@ class OrderController extends Controller
                 'sort_by' => $sortBy,
                 'sort_dir' => $sortDir,
                 'per_page' => $perPage,
+                'show_hidden' => $showHidden,
             ],
-            'orderStatusSummary' => $this->buildOrderStatusSummary(),
+            'orderStatusSummary' => $this->buildOrderStatusSummary($showHidden),
             'canManageOrderStatus' => (bool) $request->user()?->can('orders.status.update'),
             'canDeleteOrder' => (bool) $request->user()?->can('orders.delete'),
         ]);
@@ -610,6 +616,30 @@ class OrderController extends Controller
             ->with('success', ($result['changed'] ?? false) ? 'Status pembayaran berhasil diperbarui.' : 'Status pembayaran tidak berubah.');
     }
 
+    public function toggleHide(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($request->user()?->can('orders.status.update'), 403);
+
+        $order->update([
+            'is_hidden' => ! $order->is_hidden,
+        ]);
+
+        activity('orders')
+            ->causedBy($request->user())
+            ->performedOn($order)
+            ->event('visibility_updated')
+            ->withProperties([
+                'is_hidden' => $order->is_hidden,
+            ])
+            ->log('order.visibility_updated');
+
+        $message = $order->is_hidden
+            ? "Order #{$order->id} berhasil di-hide dari papan status."
+            : "Order #{$order->id} berhasil ditampilkan kembali.";
+
+        return redirect()->back()->with('success', $message);
+    }
+
     // ─── Order Detail Methods ─────────────────────────────────────────────────
 
     public function storeDetail(Request $request, Order $order): RedirectResponse
@@ -727,11 +757,12 @@ class OrderController extends Controller
         return $status;
     }
 
-    private function buildOrderStatusSummary(): array
+    private function buildOrderStatusSummary(bool $showHidden = false): array
     {
         $statusCounts = Order::query()
             ->select('order_status', DB::raw('COUNT(*) as total'))
             ->whereIn('order_status', Order::ORDER_STATUSES)
+            ->when(! $showHidden, fn ($q) => $q->where('is_hidden', false))
             ->groupBy('order_status')
             ->pluck('total', 'order_status');
 

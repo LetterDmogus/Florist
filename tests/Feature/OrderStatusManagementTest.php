@@ -64,13 +64,13 @@ class OrderStatusManagementTest extends TestCase
         $response = $this
             ->actingAs($admin)
             ->patch(route('orders.status.update', $order), [
-                'order_status' => 'confirmed',
+                'order_status' => 'ready',
             ]);
 
         $response->assertRedirect();
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
-            'order_status' => 'confirmed',
+            'order_status' => 'ready',
         ]);
     }
 
@@ -146,7 +146,7 @@ class OrderStatusManagementTest extends TestCase
         ]);
     }
 
-    public function test_admin_cannot_move_back_order_from_final_status(): void
+    public function test_admin_can_move_back_order_status(): void
     {
         $admin = User::factory()->create();
         $this->assignRole($admin, 'admin');
@@ -163,7 +163,7 @@ class OrderStatusManagementTest extends TestCase
             'shipping_date' => '2026-03-31',
             'shipping_time' => '12:00',
             'shipping_type' => 'delivery',
-            'payment_status' => 'unpaid',
+            'payment_status' => 'paid',
             'order_status' => 'completed',
         ]);
 
@@ -175,10 +175,9 @@ class OrderStatusManagementTest extends TestCase
             ]);
 
         $response->assertRedirect(route('orders.status.index'));
-        $response->assertSessionHasErrors('order_status');
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
-            'order_status' => 'completed',
+            'order_status' => 'on_delivery',
         ]);
     }
 
@@ -254,13 +253,13 @@ class OrderStatusManagementTest extends TestCase
         for ($attempt = 0; $attempt < 30; $attempt++) {
             $this->actingAs($admin)
                 ->patch(route('orders.status.update', $order), [
-                    'order_status' => 'confirmed',
+                    'order_status' => 'ready',
                 ]);
         }
 
         $this->actingAs($admin)
             ->patch(route('orders.status.update', $order), [
-                'order_status' => 'confirmed',
+                'order_status' => 'ready',
             ])
             ->assertStatus(429);
     }
@@ -408,6 +407,48 @@ class OrderStatusManagementTest extends TestCase
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
             'payment_status' => 'paid',
+        ]);
+    }
+
+    public function test_admin_can_toggle_hide_order(): void
+    {
+        $admin = User::factory()->create();
+        $this->assignRole($admin, 'admin');
+
+        $customer = Customer::create([
+            'name' => 'Status Customer Hide',
+            'phone_number' => '081200001011',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $admin->id,
+            'customer_id' => $customer->id,
+            'total' => 300000,
+            'shipping_date' => '2026-03-31',
+            'shipping_time' => '16:00',
+            'shipping_type' => 'pickup',
+            'payment_status' => 'paid',
+            'order_status' => 'completed',
+            'is_hidden' => false,
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->patch(route('orders.toggle-hide', $order));
+
+        $response->assertRedirect();
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'is_hidden' => true,
+        ]);
+
+        // Toggle back
+        $this->actingAs($admin)
+            ->patch(route('orders.toggle-hide', $order));
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'is_hidden' => false,
         ]);
     }
 

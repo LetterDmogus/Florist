@@ -10,6 +10,8 @@ use App\Models\BouquetCategory;
 use App\Models\BouquetUnit;
 use App\Models\Customer;
 use App\Models\Delivery;
+use App\Models\ItemCategory;
+use App\Models\ItemUnit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,7 +22,12 @@ class CashierController extends Controller
 {
     public function index(Request $request): Response
     {
-        return Inertia::render('Orders/Index', $this->cashierPayload($request));
+        return Inertia::render('Orders/Index', $this->bouquetPayload($request));
+    }
+
+    public function inventory(Request $request): Response
+    {
+        return Inertia::render('Orders/Inventory', $this->inventoryPayload($request));
     }
 
     public function customerLookup(Request $request): JsonResponse
@@ -110,13 +117,15 @@ class CashierController extends Controller
     {
         abort_unless($request->user()?->can('orders.create'), 403);
 
-        $action->handle($request);
+        $order = $action->handle($request);
 
-        return redirect()->route('cashier.index')
+        $redirectRoute = $request->input('order_type') === 'inventory' ? 'cashier.inventory' : 'cashier.index';
+
+        return redirect()->route($redirectRoute)
             ->with('success', 'Order berhasil dibuat.');
     }
 
-    private function cashierPayload(Request $request): array
+    private function bouquetPayload(Request $request): array
     {
         $catalogSearch = trim((string) $request->string('catalog_search')->toString());
         $catalogCategoryId = trim((string) $request->string('catalog_category_id')->toString());
@@ -160,6 +169,47 @@ class CashierController extends Controller
             ],
             'deliveryReferences' => [],
             'canCustomBouquet' => (bool) $request->user()?->can('input custom bouquet'),
+        ];
+    }
+
+    private function inventoryPayload(Request $request): array
+    {
+        $catalogSearch = trim((string) $request->string('catalog_search')->toString());
+        $catalogCategoryId = trim((string) $request->string('catalog_category_id')->toString());
+
+        if ($catalogCategoryId !== '' && ! ctype_digit($catalogCategoryId)) {
+            $catalogCategoryId = '';
+        }
+
+        $inventoryItems = ItemUnit::query()
+            ->with(['category', 'media'])
+            ->where('stock', '>', 0)
+            ->when($catalogSearch !== '', function ($query) use ($catalogSearch): void {
+                $query->where(function ($builder) use ($catalogSearch): void {
+                    $builder
+                        ->where('name', 'like', "%{$catalogSearch}%")
+                        ->orWhere('serial_number', 'like', "%{$catalogSearch}%");
+                });
+            })
+            ->when(
+                $catalogCategoryId !== '',
+                fn ($query) => $query->where('category_id', (int) $catalogCategoryId)
+            )
+            ->orderBy('name')
+            ->paginate(12, ['*'], 'inventory_page')
+            ->withQueryString();
+
+        return [
+            'customers' => [],
+            'inventoryItems' => $inventoryItems,
+            'itemCategories' => ItemCategory::query()
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'catalogFilters' => [
+                'search' => $catalogSearch,
+                'category_id' => $catalogCategoryId,
+            ],
+            'deliveryReferences' => [],
         ];
     }
 }

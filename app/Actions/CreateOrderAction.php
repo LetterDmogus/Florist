@@ -55,11 +55,14 @@ class CreateOrderAction
 
                 $paymentStatus = $this->resolvePaymentStatus((float) $total, $downPayment);
 
+                $orderType = $validated['order_type'] ?? (collect($resolvedDetails)->contains(fn ($d) => $d['item_type'] === 'bouquet') ? 'bouquet' : 'inventory');
+
                 /** @var Order $order */
                 $order = Order::create([
                     'user_id' => $request->user()->id,
                     'customer_id' => $customerId,
                     'request_id' => $requestId,
+                    'order_type' => $orderType,
                     'total' => $total,
                     'shipping_date' => $validated['shipping_date'],
                     'shipping_time' => $validated['shipping_time'],

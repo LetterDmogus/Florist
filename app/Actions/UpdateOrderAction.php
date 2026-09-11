@@ -69,7 +69,7 @@ class UpdateOrderAction
             }
 
             // 6. Update Metadata Order
-            $order->update([
+            $orderUpdates = [
                 'customer_id' => $customerId,
                 'total' => $total,
                 'shipping_date' => $validated['shipping_date'],
@@ -80,7 +80,11 @@ class UpdateOrderAction
                 'payment_status' => $validated['payment_status'],
                 'order_status' => $validated['order_status'],
                 'description' => $validated['description'] ?? null,
-            ]);
+            ];
+            if (! empty($validated['order_type'])) {
+                $orderUpdates['order_type'] = $validated['order_type'];
+            }
+            $order->update($orderUpdates);
 
             // 7. Update Delivery
             $this->updateDelivery($order, $validated);

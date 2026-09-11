@@ -15,6 +15,19 @@ defineProps({
 
 const page = usePage();
 const isSidebarOpen = ref(false);
+const isSidebarCollapsed = ref(false);
+
+onMounted(() => {
+    const saved = localStorage.getItem('sidebar_collapsed');
+    if (saved !== null) {
+        isSidebarCollapsed.value = saved === 'true';
+    }
+});
+
+const toggleSidebarCollapse = () => {
+    isSidebarCollapsed.value = !isSidebarCollapsed.value;
+    localStorage.setItem('sidebar_collapsed', String(isSidebarCollapsed.value));
+};
 
 // Flash Message Handler
 watch(() => page.props.flash, (newFlash) => {
@@ -46,8 +59,14 @@ const logout = () => {
         <ToastContainer />
 
         <!-- Sidebar (Desktop) -->
-        <aside class="hidden md:flex md:w-72 md:flex-col md:fixed md:inset-y-0 z-[50]">
-            <Sidebar />
+        <aside 
+            class="hidden md:flex md:flex-col md:fixed md:inset-y-0 z-[50] transition-all duration-300"
+            :class="isSidebarCollapsed ? 'md:w-20' : 'md:w-64'"
+        >
+            <Sidebar 
+                :is-collapsed="isSidebarCollapsed" 
+                @toggle-collapse="toggleSidebarCollapse" 
+            />
         </aside>
 
         <!-- Sidebar (Mobile Overlay) -->
@@ -57,10 +76,10 @@ const logout = () => {
         ></div>
         
         <aside :class="[
-            'fixed inset-y-0 left-0 z-[70] w-72 bg-[#fff1f7] transform transition-transform duration-300 ease-in-out md:hidden',
+            'fixed inset-y-0 left-0 z-[70] w-64 bg-[#fff1f7] transform transition-transform duration-300 ease-in-out md:hidden',
             isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         ]">
-            <Sidebar />
+            <Sidebar :is-collapsed="false" />
             <!-- Close button for mobile -->
             <button @click="isSidebarOpen = false" class="absolute top-4 -right-12 p-2 bg-pink-100 rounded-full shadow-lg text-pink-900 border border-pink-200 md:hidden">
                 <X class="w-6 h-6" />
@@ -68,12 +87,24 @@ const logout = () => {
         </aside>
 
         <!-- Main Content Area -->
-        <div class="flex-1 flex flex-col md:pl-72 min-h-screen transition-all duration-300">
+        <div 
+            class="flex-1 flex flex-col min-h-screen transition-all duration-300"
+            :class="isSidebarCollapsed ? 'md:pl-20' : 'md:pl-64'"
+        >
             <!-- Top Header -->
             <header class="sticky top-0 z-40 bg-[#fff3f9]/95 backdrop-blur-md border-b border-pink-200/80 h-16 flex items-center justify-between px-4 md:px-8">
                 <div class="flex items-center gap-4">
                     <button @click="toggleSidebar" class="p-2 -ml-2 rounded-xl text-pink-800 hover:bg-pink-100 md:hidden transition-colors">
                         <Menu class="w-6 h-6" />
+                    </button>
+                    <!-- Desktop quick button to collapse/expand if wanted -->
+                    <button 
+                        type="button" 
+                        class="hidden md:flex items-center justify-center p-2 rounded-xl text-pink-800 hover:bg-pink-100 transition-colors"
+                        :title="isSidebarCollapsed ? 'Perluas Sidebar' : 'Kecilkan Sidebar'"
+                        @click="toggleSidebarCollapse"
+                    >
+                        <Menu class="w-5 h-5" />
                     </button>
                     <h2 class="text-lg font-semibold text-pink-950 hidden sm:block">
                         {{ title }}

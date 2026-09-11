@@ -50,8 +50,14 @@ class BouquetUnit extends Model implements HasMedia
         }
 
         $media = $this->media->first(fn ($item) => $item->collection_name === 'images');
+        if (! $media) {
+            return null;
+        }
 
-        return $media?->getFullUrl();
+        $url = $media->getUrl();
+        $path = parse_url($url, PHP_URL_PATH);
+
+        return $path ?: $url;
     }
 
     public function getMoneyBouquetAttribute(): float

@@ -36,6 +36,7 @@ class UpdateOrderRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'payment_status' => ['required', Rule::in(['unpaid', 'dp', 'paid'])],
             'order_status' => ['required', Rule::in(Order::ORDER_STATUSES)],
+            'order_type' => ['nullable', Rule::in(['bouquet', 'inventory'])],
 
             // Order details
             'details' => ['required', 'array', 'min:1'],

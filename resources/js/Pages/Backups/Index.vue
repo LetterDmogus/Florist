@@ -81,10 +81,10 @@ const deleteBackup = (path) => {
                     <AlertCircle class="w-5 h-5" />
                 </div>
                 <div>
-                    <h4 class="font-bold text-blue-900">Tentang Backup</h4>
+                    <h4 class="font-bold text-blue-900">Tentang Backup SQLite</h4>
                     <p class="text-sm text-blue-800/80 leading-relaxed mt-1">
-                        Sistem ini akan melakukan snapshot database dan menyimpannya dalam format ZIP. 
-                        Sangat disarankan untuk mendownload file backup secara berkala dan menyimpannya di tempat yang aman (Cloud Storage atau Harddisk Eksternal).
+                        Sistem membuat salinan instan database SQLite berekstensi <span class="font-mono font-bold text-blue-950">.sqlite</span> secara atomic dan konsisten. 
+                        Anda dapat mengunduh file ini dan langsung menggunakannya sebagai database pengganti atau membukanya langsung di SQLite Browser saat dibutuhkan.
                     </p>
                 </div>
             </div>
@@ -118,8 +118,14 @@ const deleteBackup = (path) => {
                             <tr v-for="backup in backups" :key="backup.path" class="hover:bg-pink-50/30 transition-colors group">
                                 <td class="px-8 py-4">
                                     <div class="flex items-center gap-3">
-                                        <FileArchive class="w-5 h-5 text-pink-400" />
-                                        <span class="font-medium text-pink-950">{{ backup.file_name }}</span>
+                                        <Database v-if="backup.type === 'sqlite'" class="w-5 h-5 text-emerald-600" />
+                                        <FileArchive v-else class="w-5 h-5 text-pink-400" />
+                                        <div>
+                                            <span class="font-medium text-pink-950">{{ backup.file_name }}</span>
+                                            <span v-if="backup.type === 'sqlite'" class="ml-2 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-200">
+                                                SQLite DB
+                                            </span>
+                                        </div>
                                     </div>
                                 </td>
                                 <td class="px-8 py-4 text-muted-foreground">{{ backup.file_size }}</td>

@@ -27,12 +27,11 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
+    if (auth()->check()) {
+        return redirect()->route('dashboard');
+    }
+
+    return redirect()->route('login');
 });
 
 Route::middleware([
@@ -61,6 +60,10 @@ Route::middleware([
         Route::get('cashier', [CashierController::class, 'index'])
             ->middleware('can:orders.create')
             ->name('cashier.index');
+
+        Route::get('cashier/inventory', [CashierController::class, 'inventory'])
+            ->middleware('can:orders.create')
+            ->name('cashier.inventory');
 
         Route::get('orders/{order}/print', [OrderController::class, 'print'])
             ->middleware('can:orders.print')
@@ -102,6 +105,9 @@ Route::middleware([
             ->middleware('can:orders.status.update')
             ->middleware('throttle:order-status-update')
             ->name('orders.payment-status.update');
+        Route::patch('orders/{order}/toggle-hide', [OrderController::class, 'toggleHide'])
+            ->middleware('can:orders.status.update')
+            ->name('orders.toggle-hide');
 
         // Order Details (nested under orders)
         Route::post('orders/{order}/details', [OrderController::class, 'storeDetail'])

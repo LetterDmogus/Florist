@@ -36,16 +36,17 @@ class Order extends Model
 
     public const ORDER_STATUS_NEXT = [
         'pending' => ['ready', 'canceled'],
-        'ready' => ['on_delivery', 'completed', 'canceled'],
-        'on_delivery' => ['completed', 'canceled'],
-        'completed' => [],
-        'canceled' => [],
+        'ready' => ['pending', 'on_delivery', 'completed', 'canceled'],
+        'on_delivery' => ['pending', 'ready', 'completed', 'canceled'],
+        'completed' => ['pending', 'ready', 'on_delivery', 'canceled'],
+        'canceled' => ['pending', 'ready'],
     ];
 
     protected $fillable = [
         'user_id',
         'customer_id',
         'request_id',
+        'order_type',
         'total',
         'shipping_date',
         'shipping_time',
@@ -54,6 +55,7 @@ class Order extends Model
         'down_payment',
         'payment_status',
         'order_status',
+        'is_hidden',
         'description',
     ];
 
@@ -64,6 +66,7 @@ class Order extends Model
             'shipping_fee' => 'decimal:2',
             'down_payment' => 'decimal:2',
             'shipping_date' => 'date',
+            'is_hidden' => 'boolean',
         ];
     }
 
@@ -96,8 +99,8 @@ class Order extends Model
     {
         $candidates = self::ORDER_STATUS_NEXT[$currentStatus] ?? [];
 
-        if ($currentStatus === 'ready' && $shippingType === 'pickup') {
-            return array_values(array_filter($candidates, fn (string $status): bool => $status !== 'on_delivery'));
+        if ($shippingType === 'pickup') {
+            $candidates = array_values(array_filter($candidates, fn (string $status): bool => $status !== 'on_delivery'));
         }
 
         if ($currentStatus === 'ready' && $shippingType === 'delivery') {

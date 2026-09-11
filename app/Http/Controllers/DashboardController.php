@@ -112,8 +112,13 @@ class DashboardController extends Controller
             ->get()
             ->toArray();
 
+        $isSqlite = DB::connection()->getDriverName() === 'sqlite';
+        $yearlyDateFormat = $isSqlite
+            ? "strftime('%Y-%m', created_at) as date"
+            : "DATE_FORMAT(created_at, '%Y-%m') as date";
+
         $yearly = Order::select([
-            DB::raw("DATE_FORMAT(created_at, '%Y-%m') as date"),
+            DB::raw($yearlyDateFormat),
             DB::raw('COUNT(*) as count'),
             DB::raw('SUM(total) as total'),
         ])

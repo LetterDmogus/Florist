@@ -13,8 +13,20 @@ import {
     Settings, 
     History,
     ShieldCheck,
-    UserCog
+    UserCog,
+    ChevronLeft,
+    ChevronRight,
+    Boxes
 } from 'lucide-vue-next';
+
+const props = defineProps({
+    isCollapsed: {
+        type: Boolean,
+        default: false,
+    },
+});
+
+const emit = defineEmits(['toggleCollapse']);
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
@@ -38,7 +50,10 @@ const hasAnyRole = (roles) => {
 const isItemActive = (item) => {
     // Current route name
     const current = route().current();
-    if (!current) return false;
+    // Exact match for cashier routes to avoid cashier.index matching cashier.inventory
+    if (item.route === 'cashier.index') {
+        return current === 'cashier.index';
+    }
 
     // Direct match or wildcard match for the main item
     if (route().current(item.route + '*')) {
@@ -70,13 +85,19 @@ const menuItems = computed(() => {
             show: can('dashboard.view')
         },
         {
-            name: 'Orders',
+            name: 'POS Bouquet',
             icon: ShoppingCart,
             route: 'cashier.index',
             show: can('orders.view')
         },
         {
-            name: 'Order Status',
+            name: 'POS Barang Gudang',
+            icon: Boxes,
+            route: 'cashier.inventory',
+            show: can('orders.view')
+        },
+        {
+            name: 'Status Pesanan',
             icon: History,
             route: 'orders.status.index',
             show: can('orders.status.view')
@@ -175,39 +196,75 @@ const menuItems = computed(() => {
 </script>
 
 <template>
-    <div class="flex flex-col h-full bg-gradient-to-b from-[#fff9fd] via-[#fff4fa] to-[#ffeff8] border-r border-pink-200/80 shadow-sm transition-all duration-300 w-64 md:w-72">
-        <!-- Logo -->
-        <div class="px-6 py-6">
-            <Link :href="route('dashboard')" class="flex items-center justify-center rounded-2xl border border-pink-200/90 bg-white/90 px-3 py-3 shadow-sm">
-                <ApplicationLogo class="h-16 w-full" />
+    <div 
+        class="flex flex-col h-full bg-gradient-to-b from-[#fffafc] via-[#fff4fa] to-[#ffeff8] border-r border-pink-200/80 shadow-xs transition-all duration-300 relative"
+        :class="isCollapsed ? 'w-18 md:w-20' : 'w-60 md:w-64'"
+    >
+        <!-- Logo (Tanpa container kotak tebal, minimalis dan bersih) -->
+        <div class="px-4 py-4 transition-all duration-300 flex items-center justify-center">
+            <Link 
+                :href="route('dashboard')" 
+                class="flex items-center justify-center transition-transform hover:opacity-90 active:scale-95"
+            >
+                <img 
+                    v-if="isCollapsed" 
+                    src="/images/bees-fleur.png" 
+                    alt="Bees Fleur" 
+                    class="h-10 w-10 object-contain"
+                />
+                <img 
+                    v-else 
+                    src="/images/bees-fleur.png" 
+                    alt="Bees Fleur Logo" 
+                    class="h-12 w-auto object-contain max-w-[210px]"
+                />
             </Link>
         </div>
 
-        <!-- Navigation -->
-        <nav class="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
+        <!-- Navigation (Menu lebih compact & rapi) -->
+        <nav class="flex-1 px-3 space-y-1 overflow-y-auto custom-scrollbar">
             <template v-for="item in menuItems" :key="item.name">
-                <div>
+                <div class="relative group">
                     <Link 
                         :href="route(item.route)" 
-                        class="group flex items-center px-4 py-3 text-sm font-medium rounded-2xl border transition-all duration-200"
-                        :class="isItemActive(item) ? 'bg-pink-600 border-pink-600 text-white shadow-sm' : 'border-transparent text-pink-800 hover:bg-white hover:border-pink-200 hover:text-pink-950 hover:shadow-sm'"
+                        :title="isCollapsed ? item.name : ''"
+                        class="flex items-center text-xs font-semibold rounded-xl border"
+                        :class="[
+                            isCollapsed 
+                                ? 'justify-center p-2.5 transition-none' 
+                                : 'px-3 py-2 transition-all duration-150',
+                            isItemActive(item) 
+                                ? 'bg-pink-600 border-pink-600 text-white shadow-xs' 
+                                : isCollapsed
+                                    ? 'border-transparent text-pink-800 hover:bg-white hover:border-pink-200/70 hover:text-pink-950'
+                                    : 'border-transparent text-pink-800 hover:bg-white hover:border-pink-200/70 hover:text-pink-950'
+                        ]"
                     >
                         <component 
                             :is="item.icon" 
-                            class="mr-3 h-5 w-5 transition-transform duration-200 group-hover:scale-110" 
-                            :class="isItemActive(item) ? 'text-white' : 'text-pink-700 group-hover:text-pink-900'"
+                            class="h-3.5 w-3.5 shrink-0" 
+                            :class="[
+                                isCollapsed 
+                                    ? 'mr-0' 
+                                    : 'mr-2.5 transition-transform duration-150 group-hover:scale-105',
+                                isItemActive(item) 
+                                    ? 'text-white' 
+                                    : isCollapsed 
+                                        ? 'text-pink-600 hover:text-pink-800'
+                                        : 'text-pink-600 group-hover:text-pink-800'
+                            ]"
                         />
-                        {{ item.name }}
+                        <span v-if="!isCollapsed" class="truncate">{{ item.name }}</span>
                     </Link>
                     
-                    <!-- Sub-menu -->
-                    <div v-if="item.children && isItemActive(item)" class="mt-1 ml-9 space-y-1">
+                    <!-- Sub-menu (Expanded only) -->
+                    <div v-if="!isCollapsed && item.children && isItemActive(item)" class="mt-0.5 ml-7 space-y-0.5">
                         <Link 
                             v-for="child in item.children" 
                             :key="child.name"
                             :href="route(child.route, child.params || {})"
-                            class="block px-4 py-2 text-xs font-medium rounded-xl transition-all duration-200"
-                            :class="route().current(child.route + '*') ? 'text-pink-950 font-bold bg-white border border-pink-200' : 'text-pink-700 hover:text-pink-950 hover:bg-white/90'"
+                            class="block px-3 py-1.5 text-[11px] font-medium rounded-lg transition-all duration-150"
+                            :class="route().current(child.route + '*') ? 'text-pink-950 font-bold bg-white border border-pink-200/80 shadow-2xs' : 'text-pink-700 hover:text-pink-950 hover:bg-white/80'"
                         >
                             {{ child.name }}
                         </Link>
@@ -217,14 +274,18 @@ const menuItems = computed(() => {
         </nav>
 
         <!-- User Profile (Quick Access) -->
-        <div class="p-4 border-t border-pink-200/80 bg-pink-100/60">
-            <div class="flex items-center gap-3 px-2 py-2">
-                <div class="w-10 h-10 rounded-full bg-pink-300 flex items-center justify-center text-xs font-bold text-pink-900 uppercase">
+        <div class="p-2.5 border-t border-pink-200/80 bg-pink-100/50 transition-all duration-300">
+            <div 
+                class="flex items-center gap-2.5 rounded-xl"
+                :class="isCollapsed ? 'justify-center p-1' : 'px-2 py-1.5'"
+                :title="isCollapsed ? `${user?.name} (${user?.roles?.[0] || 'User'})` : ''"
+            >
+                <div class="w-8 h-8 shrink-0 rounded-full bg-pink-300 flex items-center justify-center text-[11px] font-bold text-pink-900 uppercase shadow-2xs">
                     {{ user?.name?.charAt(0) }}
                 </div>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-semibold text-pink-950 truncate">{{ user?.name }}</p>
-                    <p class="text-xs text-pink-700 truncate capitalize">
+                <div v-if="!isCollapsed" class="flex-1 min-w-0">
+                    <p class="text-xs font-bold text-pink-950 truncate leading-tight">{{ user?.name }}</p>
+                    <p class="text-[10px] text-pink-700 truncate capitalize">
                         {{ user?.roles?.[0] || 'User' }}
                     </p>
                 </div>
@@ -243,10 +304,5 @@ const menuItems = computed(() => {
 .custom-scrollbar::-webkit-scrollbar-thumb {
     background: rgb(244 114 182 / 35%);
     border-radius: 10px;
-}
-
-/* Base Transition for hover effects */
-a {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 </style>

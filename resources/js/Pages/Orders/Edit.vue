@@ -41,7 +41,8 @@ const props = defineProps({
 
 const LOOKUP_LIMIT = 8;
 
-const catalogMode = ref('catalog'); // 'catalog', 'custom', 'inventory'
+const orderType = computed(() => props.order.order_type || (props.order.order_details?.some(d => d.item_type === 'bouquet') ? 'bouquet' : 'inventory'));
+const catalogMode = ref(orderType.value === 'inventory' ? 'inventory' : 'catalog');
 const catalogSearch = ref(props.catalogFilters?.search || '');
 const selectedCategoryId = ref(props.catalogFilters?.category_id || '');
 const cartItems = ref([]);
@@ -423,16 +424,19 @@ watch(deliverySearch, debounce(() => fetchDeliveryOptions(), 300));
                 <!-- Left Column: Catalog & Items -->
                 <div class="lg:col-span-7 space-y-6">
                     <!-- Tab Switcher -->
-                    <section class="rounded-3xl border-2 border-pink-200 bg-white p-2 shadow-sm inline-flex">
-                        <button @click="catalogMode = 'catalog'" :class="['px-6 py-2.5 text-sm font-bold rounded-2xl transition-all', catalogMode === 'catalog' ? 'bg-pink-600 text-white shadow-md shadow-pink-200' : 'text-pink-700 hover:bg-pink-50']">
-                            <ShoppingBag class="w-4 h-4 inline mr-2" /> Bouquet
+                    <section v-if="orderType === 'bouquet'" class="rounded-xl border border-pink-200 bg-white p-1 shadow-xs inline-flex gap-1">
+                        <button @click="catalogMode = 'catalog'" :class="['px-4 py-1.5 text-xs font-bold rounded-lg transition-all', catalogMode === 'catalog' ? 'bg-pink-600 text-white shadow-xs' : 'text-pink-700 hover:bg-pink-50']">
+                            <ShoppingBag class="w-3.5 h-3.5 inline mr-1.5" /> Bouquet
                         </button>
-                        <button @click="catalogMode = 'inventory'" :class="['px-6 py-2.5 text-sm font-bold rounded-2xl transition-all', catalogMode === 'inventory' ? 'bg-pink-600 text-white shadow-md shadow-pink-200' : 'text-pink-700 hover:bg-pink-50']">
-                            <Package class="w-4 h-4 inline mr-2" /> Inventory
+                        <button v-if="canCustomBouquet" @click="catalogMode = 'custom'" :class="['px-4 py-1.5 text-xs font-bold rounded-lg transition-all', catalogMode === 'custom' ? 'bg-pink-600 text-white shadow-xs' : 'text-pink-700 hover:bg-pink-50']">
+                            <WandSparkles class="w-3.5 h-3.5 inline mr-1.5" /> Custom
                         </button>
-                        <button v-if="canCustomBouquet" @click="catalogMode = 'custom'" :class="['px-6 py-2.5 text-sm font-bold rounded-2xl transition-all', catalogMode === 'custom' ? 'bg-pink-600 text-white shadow-md shadow-pink-200' : 'text-pink-700 hover:bg-pink-50']">
-                            <WandSparkles class="w-4 h-4 inline mr-2" /> Custom
-                        </button>
+                    </section>
+                    <section v-else class="rounded-xl border border-blue-200 bg-white p-1 shadow-xs inline-flex gap-1">
+                        <div class="px-4 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white shadow-xs flex items-center gap-1.5">
+                            <Package class="w-3.5 h-3.5" />
+                            <span>Katalog Barang Gudang</span>
+                        </div>
                     </section>
 
                     <!-- Catalog/Inventory Area -->

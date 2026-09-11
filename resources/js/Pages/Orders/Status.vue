@@ -4,7 +4,30 @@ import Modal from '@/Components/Modal.vue';
 import BaseButton from '@/Components/BaseButton.vue';
 import { Head, router, Link } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
-import { Printer, ArrowUpDown, ChevronUp, ChevronDown, Trash2, XCircle, Pencil } from 'lucide-vue-next';
+import { 
+    Printer, 
+    Pencil, 
+    Trash2, 
+    XCircle, 
+    Clock, 
+    PackageCheck, 
+    Truck, 
+    CheckCircle2, 
+    AlertCircle, 
+    Eye, 
+    EyeOff,
+    Search, 
+    RotateCcw, 
+    LayoutGrid, 
+    List,
+    Calendar,
+    Phone,
+    MapPin,
+    Sparkles,
+    ArrowUpDown,
+    ChevronUp,
+    ChevronDown
+} from 'lucide-vue-next';
 
 const props = defineProps({
     orders: {
@@ -29,10 +52,233 @@ const props = defineProps({
     },
 });
 
+const viewMode = ref('kanban');
 const updatingOrderId = ref(null);
 const updatingPaymentOrderId = ref(null);
 const search = ref(props.filters?.search ?? '');
 const detailOrderId = ref(null);
+const draggingOrderId = ref(null);
+const dragOverStatus = ref(null);
+const hideCompleted = ref(false);
+const hideCanceled = ref(false);
+const showHidden = ref(Boolean(props.filters?.show_hidden));
+
+// LocalStorage key for persisting minimized orders
+const STORAGE_KEY_MINIMIZED_ORDERS = 'florist_minimized_order_ids';
+
+const loadMinimizedOrdersFromStorage = () => {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY_MINIMIZED_ORDERS);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+                return new Set(parsed);
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load minimized orders from storage', e);
+    }
+    return new Set();
+};
+
+const saveMinimizedOrdersToStorage = (set) => {
+    try {
+        localStorage.setItem(STORAGE_KEY_MINIMIZED_ORDERS, JSON.stringify(Array.from(set)));
+    } catch (e) {
+        console.error('Failed to save minimized orders to storage', e);
+    }
+};
+
+// Set of minimized order IDs (persisted in localStorage)
+const minimizedOrderIds = ref(loadMinimizedOrdersFromStorage());
+
+const isOrderMinimized = (orderId) => {
+    return minimizedOrderIds.value.has(orderId);
+};
+
+const toggleOrderMinimize = (orderId) => {
+    if (minimizedOrderIds.value.has(orderId)) {
+        minimizedOrderIds.value.delete(orderId);
+    } else {
+        minimizedOrderIds.value.add(orderId);
+    }
+    saveMinimizedOrdersToStorage(minimizedOrderIds.value);
+};
+
+const areAllMinimized = computed(() => {
+    const allIds = ordersList.value.map(o => o.id);
+    return allIds.length > 0 && allIds.every(id => minimizedOrderIds.value.has(id));
+});
+
+const toggleMinimizeAll = () => {
+    const allIds = ordersList.value.map(o => o.id);
+    if (areAllMinimized.value) {
+        minimizedOrderIds.value.clear();
+    } else {
+        minimizedOrderIds.value = new Set(allIds);
+    }
+    saveMinimizedOrdersToStorage(minimizedOrderIds.value);
+};
+
+const toggleShowHidden = () => {
+    showHidden.value = !showHidden.value;
+    router.get(route('orders.status.index'), {
+        ...props.filters,
+        order_status: activeOrderStatus.value || '',
+        search: search.value || '',
+        sort_by: sortBy.value,
+        sort_dir: sortDir.value,
+        show_hidden: showHidden.value ? 1 : 0,
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        replace: true,
+    });
+};
+
+const columns = [
+    {
+        key: 'pending',
+        title: 'Belum Diproses',
+        description: 'Pesanan baru masuk',
+        icon: Clock,
+        headerBg: 'bg-amber-50 text-amber-900 border-amber-200',
+        badgeBg: 'bg-amber-100 text-amber-800',
+        dropZoneBg: 'bg-amber-50/50 border-amber-300',
+    },
+    {
+        key: 'ready',
+        title: 'Siap di-Pickup',
+        description: 'Rangkaian buket selesai',
+        icon: PackageCheck,
+        headerBg: 'bg-blue-50 text-blue-900 border-blue-200',
+        badgeBg: 'bg-blue-100 text-blue-800',
+        dropZoneBg: 'bg-blue-50/50 border-blue-300',
+    },
+    {
+        key: 'on_delivery',
+        title: 'Sedang Diantar',
+        description: 'Dalam proses kurir',
+        icon: Truck,
+        headerBg: 'bg-purple-50 text-purple-900 border-purple-200',
+        badgeBg: 'bg-purple-100 text-purple-800',
+        dropZoneBg: 'bg-purple-50/50 border-purple-300',
+    },
+    {
+        key: 'completed',
+        title: 'Selesai (History)',
+        description: 'Pesanan telah diterima',
+        icon: CheckCircle2,
+        headerBg: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+        badgeBg: 'bg-emerald-100 text-emerald-800',
+        dropZoneBg: 'bg-emerald-50/50 border-emerald-300',
+    },
+    {
+        key: 'canceled',
+        title: 'Dibatalkan',
+        description: 'Pesanan batal',
+        icon: AlertCircle,
+        headerBg: 'bg-rose-50 text-rose-900 border-rose-200',
+        badgeBg: 'bg-rose-100 text-rose-800',
+        dropZoneBg: 'bg-rose-50/50 border-rose-300',
+    },
+];
+
+const formatCurrency = (value) => {
+    const amount = Number(value) || 0;
+    return new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0,
+    }).format(amount);
+};
+
+const formatShippingDate = (value) => {
+    if (!value) return '-';
+    const raw = String(value);
+    const parsed = new Date(raw.includes('T') ? raw : `${raw}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return raw.split('T')[0] ?? raw;
+    return new Intl.DateTimeFormat('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    }).format(parsed);
+};
+
+const formatShippingTime = (value) => {
+    if (!value) return '-';
+    const [hour = '00', minute = '00'] = String(value).split(':');
+    return `${hour}:${minute}`;
+};
+
+const ordersList = computed(() => {
+    return props.orders?.data ?? [];
+});
+
+const visibleColumns = computed(() => {
+    return columns.filter((col) => {
+        if (col.key === 'completed' && hideCompleted.value) return false;
+        if (col.key === 'canceled' && hideCanceled.value) return false;
+        return true;
+    });
+});
+
+const filteredOrdersList = computed(() => {
+    return ordersList.value.filter((order) => {
+        if (order.order_status === 'completed' && hideCompleted.value) return false;
+        if (order.order_status === 'canceled' && hideCanceled.value) return false;
+        return true;
+    });
+});
+
+const ordersByStatus = computed(() => {
+    const map = {
+        pending: [],
+        ready: [],
+        on_delivery: [],
+        completed: [],
+        canceled: [],
+    };
+
+    ordersList.value.forEach((order) => {
+        if (map[order.order_status]) {
+            map[order.order_status].push(order);
+        }
+    });
+
+    return map;
+});
+
+const statusLabelMap = computed(() => {
+    return Object.fromEntries(
+        props.orderStatusSummary.map((status) => [status.value, status.label]),
+    );
+});
+
+const formatOrderStatus = (status) => {
+    return statusLabelMap.value[status] ?? status;
+};
+
+const formatPaymentStatus = (status) => {
+    const labels = {
+        unpaid: 'Belum Bayar',
+        dp: 'DP',
+        paid: 'Lunas',
+    };
+    return labels[status] ?? status;
+};
+
+const activeOrderStatus = computed(() => props.filters?.order_status ?? '');
+
+const orderStatusSummaryWithAll = computed(() => {
+    const total = props.orderStatusSummary.reduce((sum, item) => sum + Number(item.count || 0), 0);
+
+    return [
+        { value: '', label: 'Semua Status', count: total },
+        ...props.orderStatusSummary,
+    ];
+});
+
 const sortBy = ref(props.filters?.sort_by ?? 'created_at');
 const sortDir = ref(props.filters?.sort_dir ?? 'desc');
 
@@ -46,83 +292,14 @@ const handleSort = (key) => {
     
     router.get(route('orders.status.index'), {
         ...props.filters,
+        order_status: activeOrderStatus.value || '',
+        search: search.value || '',
         sort_by: sortBy.value,
         sort_dir: sortDir.value,
     }, {
         preserveScroll: true,
         preserveState: true,
     });
-};
-
-const formatCurrency = (value) => {
-    const amount = Number(value) || 0;
-    return new Intl.NumberFormat('id-ID', {
-        style: 'currency',
-        currency: 'IDR',
-        minimumFractionDigits: 0,
-    }).format(amount);
-};
-
-const formatShippingDate = (value) => {
-    if (!value) {
-        return '-';
-    }
-
-    const raw = String(value);
-    const parsed = new Date(raw.includes('T') ? raw : `${raw}T00:00:00`);
-
-    if (Number.isNaN(parsed.getTime())) {
-        return raw.split('T')[0] ?? raw;
-    }
-
-    return new Intl.DateTimeFormat('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-    }).format(parsed);
-};
-
-const formatShippingTime = (value) => {
-    if (!value) {
-        return '-';
-    }
-
-    const [hour = '00', minute = '00'] = String(value).split(':');
-
-    return `${hour}:${minute}`;
-};
-
-const activeOrderStatus = computed(() => props.filters?.order_status ?? '');
-
-const orderStatusSummaryWithAll = computed(() => {
-    const total = props.orderStatusSummary.reduce((sum, item) => sum + Number(item.count || 0), 0);
-
-    return [
-        { value: '', label: 'All Status', count: total },
-        ...props.orderStatusSummary,
-    ];
-});
-
-const statusLabelMap = computed(() => {
-    return Object.fromEntries(
-        props.orderStatusSummary.map((status) => [status.value, status.label]),
-    );
-});
-
-const statusValues = computed(() => props.orderStatusSummary.map((status) => status.value));
-
-const formatOrderStatus = (status) => {
-    return statusLabelMap.value[status] ?? status;
-};
-
-const formatPaymentStatus = (status) => {
-    const labels = {
-        unpaid: 'Belum Bayar',
-        dp: 'DP',
-        paid: 'Lunas',
-    };
-
-    return labels[status] ?? status;
 };
 
 const filterOrdersByStatus = (status) => {
@@ -135,7 +312,6 @@ const filterOrdersByStatus = (status) => {
         preserveScroll: true,
         preserveState: true,
         replace: true,
-        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus'],
     });
 };
 
@@ -149,7 +325,17 @@ const applySearch = () => {
         preserveScroll: true,
         preserveState: true,
         replace: true,
-        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus'],
+    });
+};
+
+const resetFilter = () => {
+    search.value = '';
+    router.get(route('orders.status.index'), {
+        order_status: '',
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        replace: true,
     });
 };
 
@@ -167,92 +353,64 @@ const goToPage = (url) => {
     }
 };
 
-const getStatusIndex = (status) => {
-    return statusValues.value.indexOf(status);
+// Drag and Drop Logic
+const onDragStart = (event, order) => {
+    if (!props.canManageOrderStatus) return;
+    draggingOrderId.value = order.id;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(order.id));
 };
 
-const getNextStatus = (status, shippingType = 'pickup') => {
-    if (status === 'ready' && shippingType === 'pickup') {
-        return 'completed';
+const onDragEnd = () => {
+    draggingOrderId.value = null;
+    dragOverStatus.value = null;
+};
+
+const onDragOver = (event, targetStatus) => {
+    if (!props.canManageOrderStatus) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    dragOverStatus.value = targetStatus;
+};
+
+const onDragLeave = (targetStatus) => {
+    if (dragOverStatus.value === targetStatus) {
+        dragOverStatus.value = null;
     }
-
-    const index = getStatusIndex(status);
-    if (index < 0 || index >= statusValues.value.length - 1) {
-        return null;
-    }
-
-    const next = statusValues.value[index + 1] ?? null;
-    
-    // Jangan izinkan 'canceled' sebagai next status otomatis (itu manual)
-    if (next === 'canceled') {
-        return null;
-    }
-
-    return next;
 };
 
-const isBlockedByPayment = (order) => {
-    const nextStatus = getNextStatus(order.order_status, order.shipping_type);
+const onDrop = (event, targetStatus) => {
+    if (!props.canManageOrderStatus) return;
+    event.preventDefault();
+    dragOverStatus.value = null;
 
-    return nextStatus === 'completed' && order.payment_status !== 'paid';
-};
+    const orderId = draggingOrderId.value || event.dataTransfer.getData('text/plain');
+    if (!orderId) return;
 
-const getFinalStatus = () => {
-    return statusValues.value[statusValues.value.length - 1] ?? null;
-};
+    const order = ordersList.value.find((o) => Number(o.id) === Number(orderId));
+    if (!order) return;
 
-const isFinalStatus = (status) => {
-    return status === getFinalStatus();
-};
+    if (order.order_status === targetStatus) return;
 
-const stepOrderStatus = (order) => {
-    const status = getNextStatus(order.order_status, order.shipping_type);
-
-    if (!status) {
+    if (targetStatus === 'completed' && order.payment_status !== 'paid') {
+        alert('Order harus berstatus Lunas terlebih dahulu sebelum dipindahkan ke status Selesai!');
         return;
     }
 
+    if (order.shipping_type === 'pickup' && targetStatus === 'on_delivery') {
+        alert('Order tipe Pickup (Ambil Sendiri) tidak bisa dipindahkan ke Sedang Diantar.');
+        return;
+    }
+
+    changeOrderStatus(order, targetStatus);
+};
+
+const changeOrderStatus = (order, targetStatus) => {
     updatingOrderId.value = order.id;
 
     router.patch(route('orders.status.update', order.id), {
-        order_status: status,
+        order_status: targetStatus,
     }, {
-        preserveScroll: true,
-        preserveState: true,
-        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus', 'canDeleteOrder'],
-        onFinish: () => {
-            updatingOrderId.value = null;
-        },
-    });
-};
-
-const cancelOrder = (order) => {
-    if (!confirm('Apakah Anda yakin ingin membatalkan order ini?')) {
-        return;
-    }
-
-    updatingOrderId.value = order.id;
-
-    router.patch(route('orders.status.update', order.id), {
-        order_status: 'canceled',
-    }, {
-        preserveScroll: true,
-        preserveState: true,
-        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus', 'canDeleteOrder'],
-        onFinish: () => {
-            updatingOrderId.value = null;
-        },
-    });
-};
-
-const discardOrder = (order) => {
-    if (!confirm('Hapus order ini secara permanen? Penomoran ID order akan dikembalikan jika ini order terbaru.')) {
-        return;
-    }
-
-    updatingOrderId.value = order.id;
-
-    router.delete(route('orders.destroy', order.id), {
         preserveScroll: true,
         preserveState: true,
         onFinish: () => {
@@ -262,10 +420,7 @@ const discardOrder = (order) => {
 };
 
 const markOrderAsPaid = (order) => {
-    if (order.payment_status === 'paid') {
-        return;
-    }
-
+    if (order.payment_status === 'paid') return;
     updatingPaymentOrderId.value = order.id;
 
     router.patch(route('orders.payment-status.update', order.id), {
@@ -273,34 +428,44 @@ const markOrderAsPaid = (order) => {
     }, {
         preserveScroll: true,
         preserveState: true,
-        only: ['orders', 'filters', 'orderStatusSummary', 'canManageOrderStatus', 'canDeleteOrder'],
         onFinish: () => {
             updatingPaymentOrderId.value = null;
         },
     });
 };
 
-const getNextStatusLabel = (status, shippingType = 'pickup') => {
-    const next = getNextStatus(status, shippingType);
-
-    return next ? formatOrderStatus(next) : '';
+const cancelOrder = (order) => {
+    if (!confirm('Apakah Anda yakin ingin membatalkan order ini?')) return;
+    changeOrderStatus(order, 'canceled');
 };
 
-const getActionLabel = (order) => {
-    if (isBlockedByPayment(order)) {
-        return 'Lunasi Dulu';
-    }
+const toggleHideOrder = (order) => {
+    updatingOrderId.value = order.id;
+    router.patch(route('orders.toggle-hide', order.id), {}, {
+        preserveScroll: true,
+        preserveState: true,
+        onFinish: () => {
+            updatingOrderId.value = null;
+        },
+    });
+};
 
-    return getNextStatusLabel(order.order_status, order.shipping_type);
+const discardOrder = (order) => {
+    if (!confirm('Hapus order ini secara permanen?')) return;
+    updatingOrderId.value = order.id;
+    router.delete(route('orders.destroy', order.id), {
+        preserveScroll: true,
+        preserveState: true,
+        onFinish: () => {
+            updatingOrderId.value = null;
+        },
+    });
 };
 
 const selectedOrder = computed(() => {
     const id = detailOrderId.value;
-    if (!id) {
-        return null;
-    }
-
-    return props.orders?.data?.find((order) => Number(order.id) === Number(id)) ?? null;
+    if (!id) return null;
+    return ordersList.value.find((order) => Number(order.id) === Number(id)) ?? null;
 });
 
 const detailRows = computed(() => {
@@ -319,10 +484,9 @@ const closeDetailModal = () => {
 
 const resolveDetailName = (detail) => {
     if (detail.item_type === 'bouquet') {
-        return detail.bouquet_unit?.name ?? '-';
+        return detail.bouquet_unit?.name ?? 'Bouquet Item';
     }
-
-    return detail.inventory_item?.name ?? '-';
+    return detail.inventory_item?.name ?? 'Material/Item';
 };
 
 watch(
@@ -331,85 +495,371 @@ watch(
         search.value = value ?? '';
     },
 );
-
-watch(
-    () => props.filters?.sort_by,
-    (value) => {
-        sortBy.value = value ?? 'created_at';
-    },
-);
-
-watch(
-    () => props.filters?.sort_dir,
-    (value) => {
-        sortDir.value = value ?? 'desc';
-    },
-);
-
-watch(
-    () => props.orders?.data,
-    (orders) => {
-        if (!detailOrderId.value) {
-            return;
-        }
-
-        const found = (orders ?? []).some((order) => Number(order.id) === Number(detailOrderId.value));
-        if (!found) {
-            closeDetailModal();
-        }
-    },
-);
 </script>
 
 <template>
-    <AppLayout title="Order Status">
-        <Head title="Order Status" />
+    <AppLayout title="Order Kanban Board">
+        <Head title="Order Status Board" />
 
         <div class="space-y-6">
-            <section class="rounded-3xl border border-pink-200 bg-gradient-to-r from-pink-100/70 via-white to-pink-50 p-6">
-                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-pink-600">Order Tracking</p>
-                <h1 class="mt-2 text-2xl font-bold text-pink-950">Status Order</h1>
-                <p class="mt-1 text-sm text-pink-700">Lihat order berdasarkan status dan atur progres order.</p>
-            </section>
-
-            <section class="rounded-3xl border border-pink-200/80 bg-white p-5 shadow-sm">
-                <div class="mb-3 flex items-center justify-between">
-                    <h2 class="text-lg font-semibold text-pink-950">Daftar Order</h2>
-                    <span class="text-xs text-pink-700">{{ orders.total ?? 0 }} total order</span>
+            <!-- Header Section (Direct Title without Banner Container) -->
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 class="text-xl font-bold text-pink-950">Status & Tracking Pesanan</h1>
+                    <p class="mt-0.5 text-xs text-pink-600">Geser kartu pesanan antar kolom status untuk memperbarui progress secara instan.</p>
                 </div>
 
-                <div class="mb-4 flex flex-wrap items-center gap-2">
-                    <input
-                        v-model="search"
-                        type="text"
-                        placeholder="Cari order ID / customer / no hp..."
-                        class="w-full max-w-md rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300"
-                        @keyup.enter="applySearch"
-                    >
+                <div class="flex items-center gap-2">
+                    <div class="bg-white p-1 rounded-xl border border-pink-200 flex items-center shadow-xs">
+                        <button
+                            type="button"
+                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition"
+                            :class="viewMode === 'kanban' ? 'bg-pink-600 text-white shadow-xs' : 'text-pink-700 hover:bg-pink-50'"
+                            @click="viewMode = 'kanban'"
+                        >
+                            <LayoutGrid class="w-4 h-4" />
+                            Kanban Board
+                        </button>
+                        <button
+                            type="button"
+                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition"
+                            :class="viewMode === 'table' ? 'bg-pink-600 text-white shadow-xs' : 'text-pink-700 hover:bg-pink-50'"
+                            @click="viewMode = 'table'"
+                        >
+                            <List class="w-4 h-4" />
+                            Tabel
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter and Search Bar -->
+            <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-pink-100 shadow-xs">
+                <div class="flex flex-1 items-center gap-2 max-w-md">
+                    <div class="relative w-full">
+                        <input
+                            v-model="search"
+                            type="text"
+                            placeholder="Cari ID, customer, atau no HP..."
+                            class="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-pink-200 focus:border-pink-500 focus:ring-1 focus:ring-pink-400"
+                            @keyup.enter="applySearch"
+                        >
+                        <Search class="w-3.5 h-3.5 text-pink-400 absolute left-2.5 top-2.5" />
+                    </div>
                     <button
                         type="button"
-                        class="rounded-xl bg-pink-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-pink-700"
+                        class="px-3 py-1.5 bg-pink-600 text-white rounded-xl text-xs font-bold hover:bg-pink-700 transition shadow-xs"
                         @click="applySearch"
                     >
                         Cari
                     </button>
+                    <button
+                        v-if="search"
+                        type="button"
+                        class="p-1.5 text-pink-500 hover:bg-pink-50 rounded-xl transition"
+                        title="Reset pencarian"
+                        @click="resetFilter"
+                    >
+                        <RotateCcw class="w-3.5 h-3.5" />
+                    </button>
                 </div>
 
+                <div class="flex items-center gap-2">
+                    <!-- Hide Completed & Canceled Toggles + Minimize All -->
+                    <div class="flex items-center gap-1.5 bg-pink-50/60 p-1 rounded-xl border border-pink-200/80">
+                        <button
+                            type="button"
+                            class="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
+                            :class="areAllMinimized ? 'bg-pink-600 text-white shadow-2xs' : 'text-pink-800 hover:bg-pink-100/60'"
+                            :title="areAllMinimized ? 'Buka semua kartu pesanan (Maximize)' : 'Kecilkan semua kartu pesanan (Minimize)'"
+                            @click="toggleMinimizeAll"
+                        >
+                            <component :is="areAllMinimized ? ChevronDown : ChevronUp" class="w-3.5 h-3.5" />
+                            <span>{{ areAllMinimized ? 'Buka Semua' : 'Kecilkan Semua' }}</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
+                            :class="hideCompleted ? 'bg-emerald-600 text-white shadow-2xs' : 'text-emerald-800 hover:bg-emerald-100/60'"
+                            :title="hideCompleted ? 'Tampilkan kolom Selesai' : 'Sembunyikan kolom Selesai'"
+                            @click="hideCompleted = !hideCompleted"
+                        >
+                            <component :is="hideCompleted ? EyeOff : Eye" class="w-3.5 h-3.5" />
+                            <span>{{ hideCompleted ? 'Selesai: Sembunyi' : 'Selesai: Tampil' }}</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
+                            :class="hideCanceled ? 'bg-rose-600 text-white shadow-2xs' : 'text-rose-800 hover:bg-rose-100/60'"
+                            :title="hideCanceled ? 'Tampilkan kolom Dibatalkan' : 'Sembunyikan kolom Dibatalkan'"
+                            @click="hideCanceled = !hideCanceled"
+                        >
+                            <component :is="hideCanceled ? EyeOff : Eye" class="w-3.5 h-3.5" />
+                            <span>{{ hideCanceled ? 'Batal: Sembunyi' : 'Batal: Tampil' }}</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
+                            :class="showHidden ? 'bg-amber-600 text-white shadow-2xs' : 'text-amber-800 hover:bg-amber-100/60'"
+                            :title="showHidden ? 'Sembunyikan kartu berstatus hide' : 'Tampilkan kartu yang di-hide'"
+                            @click="toggleShowHidden"
+                        >
+                            <component :is="showHidden ? Eye : EyeOff" class="w-3.5 h-3.5" />
+                            <span>{{ showHidden ? 'Item Tersembunyi: Tampil' : 'Lihat Item Tersembunyi' }}</span>
+                        </button>
+                    </div>
+
+                    <div class="text-xs text-pink-800 font-medium whitespace-nowrap">
+                        Total: <span class="font-bold text-pink-950">{{ filteredOrdersList.length }}</span> order
+                    </div>
+                </div>
+            </div>
+
+            <!-- KANBAN BOARD VIEW -->
+            <div v-if="viewMode === 'kanban'" class="overflow-x-auto pb-6">
+                <!-- Container kolom disatukan tanpa gap, dipisahkan garis divide-x border -->
+                <div
+                    class="grid min-w-[900px] bg-white rounded-xl border border-pink-200 divide-y md:divide-y-0 md:divide-x divide-pink-200/90 shadow-2xs overflow-hidden"
+                    :class="visibleColumns.length === 5 ? 'grid-cols-1 md:grid-cols-5' : visibleColumns.length === 4 ? 'grid-cols-1 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'"
+                >
+                    <div
+                        v-for="col in visibleColumns"
+                        :key="col.key"
+                        class="flex flex-col bg-pink-50/15 p-2 min-h-[580px] transition-colors"
+                        :class="dragOverStatus === col.key ? col.dropZoneBg + ' ring-2 ring-inset ring-pink-400' : ''"
+                        @dragover="onDragOver($event, col.key)"
+                        @dragleave="onDragLeave(col.key)"
+                        @drop="onDrop($event, col.key)"
+                    >
+                        <!-- Column Header -->
+                        <div class="p-2 rounded-lg border mb-2 flex items-center justify-between" :class="col.headerBg">
+                            <div class="flex items-center gap-1.5">
+                                <component :is="col.icon" class="w-3.5 h-3.5" />
+                                <h3 class="text-xs font-black uppercase tracking-wider">{{ col.title }}</h3>
+                            </div>
+                            <span class="px-1.5 py-0.2 rounded text-[10px] font-black" :class="col.badgeBg">
+                                {{ ordersByStatus[col.key]?.length || 0 }}
+                            </span>
+                        </div>
+
+                        <!-- Drop Zone / Cards List -->
+                        <div class="flex-1 space-y-2 overflow-y-auto max-h-[720px] pr-0.5">
+                            <div
+                                v-for="order in ordersByStatus[col.key]"
+                                :key="order.id"
+                                :draggable="canManageOrderStatus && updatingOrderId !== order.id"
+                                class="bg-white rounded-lg border border-pink-200/90 shadow-2xs hover:shadow-xs transition-all select-none group overflow-hidden"
+                                :class="[
+                                    canManageOrderStatus ? 'cursor-grab active:cursor-grabbing hover:border-pink-400' : '',
+                                    draggingOrderId === order.id ? 'opacity-40 scale-95' : '',
+                                    updatingOrderId === order.id ? 'opacity-60 pointer-events-none' : '',
+                                    isOrderMinimized(order.id) ? 'bg-pink-50/20' : ''
+                                ]"
+                                @dragstart="onDragStart($event, order)"
+                                @dragend="onDragEnd"
+                            >
+                                <!-- Order Header (ID & Teks Pickup/Delivery di sampingnya, serta Payment Status + Lunas & Minimize Button) -->
+                                <div class="px-2.5 py-1.5 bg-pink-50/40 border-b border-pink-100 flex items-start justify-between gap-1.5">
+                                    <div class="flex flex-col gap-1 min-w-0">
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="text-[11px] font-black text-pink-700 font-mono">
+                                                #{{ order.id }}
+                                            </span>
+                                            <!-- Teks Pickup / Delivery di samping kode pesanan -->
+                                            <span
+                                                class="px-1.5 py-0.2 rounded text-[9px] font-bold capitalize shrink-0"
+                                                :class="order.shipping_type === 'delivery' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-amber-50 text-amber-700 border border-amber-100'"
+                                            >
+                                                {{ order.shipping_type }}
+                                            </span>
+                                            <span
+                                                v-if="order.is_hidden"
+                                                class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200 shrink-0"
+                                                title="Order ini disembunyikan"
+                                            >
+                                                Hidden
+                                            </span>
+                                        </div>
+
+                                        <!-- Badge Bouquet / Gudang diletakkan di bawah kode pesanan -->
+                                        <div>
+                                            <span
+                                                class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold"
+                                                :class="order.order_type === 'inventory' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-pink-100 text-pink-800 border border-pink-200'"
+                                                :title="order.order_type === 'inventory' ? 'Order Barang Gudang' : 'Order Bouquet'"
+                                            >
+                                                {{ order.order_type === 'inventory' ? 'Gudang' : 'Bouquet' }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="flex items-center gap-1 shrink-0">
+                                        <span
+                                            class="text-[9px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider"
+                                            :class="order.payment_status === 'paid'
+                                                ? 'bg-emerald-100 text-emerald-800'
+                                                : order.payment_status === 'dp'
+                                                    ? 'bg-amber-100 text-amber-800 font-extrabold'
+                                                    : 'bg-slate-100 text-slate-700'"
+                                        >
+                                            {{ formatPaymentStatus(order.payment_status) }}
+                                        </span>
+
+                                        <!-- Tombol Lunas tepat di samping DP / Status Pembayaran -->
+                                        <button
+                                            v-if="canManageOrderStatus && order.payment_status !== 'paid' && order.order_status !== 'canceled'"
+                                            type="button"
+                                            class="px-1.5 py-0.2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9px] font-bold transition disabled:opacity-50 inline-flex items-center gap-0.5 shadow-2xs"
+                                            :disabled="updatingPaymentOrderId === order.id"
+                                            title="Tandai pesanan lunas"
+                                            @click="markOrderAsPaid(order)"
+                                        >
+                                            <CheckCircle2 class="w-2.5 h-2.5 inline" />
+                                            <span>{{ updatingPaymentOrderId === order.id ? '...' : 'Lunas' }}</span>
+                                        </button>
+
+                                        <!-- Tombol Minimize / Maximize Card -->
+                                        <button
+                                            type="button"
+                                            class="p-0.5 rounded text-pink-600 hover:text-pink-900 hover:bg-pink-100/70 transition"
+                                            :title="isOrderMinimized(order.id) ? 'Buka rincian order (Maximize)' : 'Sederhanakan kartu (Minimize)'"
+                                            @click="toggleOrderMinimize(order.id)"
+                                        >
+                                            <component :is="isOrderMinimized(order.id) ? ChevronDown : ChevronUp" class="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Customer Info Section (Selalu Tampil) -->
+                                <div class="px-2.5 py-1.5" :class="!isOrderMinimized(order.id) ? 'border-b border-pink-100/70' : ''">
+                                    <h4 class="text-xs font-bold text-pink-950 group-hover:text-pink-600 transition truncate leading-snug">
+                                        {{ order.customer?.name ?? 'Guest' }}
+                                    </h4>
+                                    <p class="text-[10px] text-pink-700/80 flex items-center gap-1 mt-0.5">
+                                        <Phone class="w-2.5 h-2.5 text-pink-400 shrink-0" />
+                                        <span class="truncate">{{ order.customer?.phone_number ?? '-' }}</span>
+                                    </p>
+                                </div>
+
+                                <!-- Bagian Isi Order & Info Lain (Hanya Tampil Saat Maximized) -->
+                                <template v-if="!isOrderMinimized(order.id)">
+                                    <!-- Items summary Section -->
+                                    <div class="px-2.5 py-1.5 border-b border-pink-100/70 bg-pink-50/20 text-xs">
+                                        <div v-for="detail in order.order_details" :key="detail.id" class="flex justify-between items-center text-[10px] py-0.5 leading-tight">
+                                            <span class="truncate text-pink-900 max-w-[140px]">{{ resolveDetailName(detail) }}</span>
+                                            <span class="text-pink-600 font-bold ml-1">x{{ detail.quantity }}</span>
+                                        </div>
+                                        <div v-if="!order.order_details?.length" class="text-[10px] text-pink-400 italic">
+                                            Tidak ada item
+                                        </div>
+                                    </div>
+
+                                    <!-- Schedule & Total Price Bar -->
+                                    <div class="px-2.5 py-1.5 border-b border-pink-100/70 flex items-center justify-between text-[10px]">
+                                        <div class="flex items-center gap-1 text-pink-700">
+                                            <Calendar class="w-2.5 h-2.5 text-pink-500 shrink-0" />
+                                            <span>{{ formatShippingDate(order.shipping_date) }}</span>
+                                        </div>
+                                        <div class="text-right">
+                                            <span class="text-pink-950 font-black text-xs">{{ formatCurrency(order.total) }}</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Action Buttons Footer -->
+                                    <div class="px-2.5 py-1.5 bg-pink-50/20 flex items-center justify-between gap-1">
+                                        <div class="flex items-center gap-1">
+                                            <Link
+                                                :href="route('orders.print', order.id)"
+                                                class="h-7 w-7 rounded-lg border border-blue-200 bg-blue-50/70 flex items-center justify-center text-blue-700 hover:bg-blue-100 transition shadow-2xs"
+                                                title="Cetak Struk"
+                                            >
+                                                <Printer class="h-3.5 w-3.5" />
+                                            </Link>
+                                            <Link
+                                                :href="route('orders.edit', order.id)"
+                                                class="h-7 w-7 rounded-lg border border-pink-200 bg-white flex items-center justify-center text-pink-700 hover:bg-pink-50 transition shadow-2xs"
+                                                title="Edit Order"
+                                            >
+                                                <Pencil class="h-3.5 w-3.5" />
+                                            </Link>
+                                            <button
+                                                type="button"
+                                                class="h-7 w-7 rounded-lg border border-pink-200 bg-white flex items-center justify-center text-pink-700 hover:bg-pink-50 transition shadow-2xs"
+                                                title="Lihat Detail"
+                                                @click="openDetailModal(order)"
+                                            >
+                                                <Eye class="h-3.5 w-3.5" />
+                                            </button>
+                                        </div>
+
+                                        <!-- Quick Cancel/Delete/Hide actions -->
+                                        <div class="flex items-center gap-1">
+                                            <button
+                                                v-if="canManageOrderStatus && (order.order_status === 'completed' || order.order_status === 'canceled' || order.is_hidden)"
+                                                type="button"
+                                                class="h-7 w-7 rounded-lg border flex items-center justify-center transition shadow-2xs"
+                                                :class="order.is_hidden ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
+                                                :title="order.is_hidden ? 'Tampilkan order kembali' : 'Sembunyikan (Hide) order dari papan status'"
+                                                @click="toggleHideOrder(order)"
+                                            >
+                                                <component :is="order.is_hidden ? Eye : EyeOff" class="w-3.5 h-3.5" />
+                                            </button>
+
+                                            <button
+                                                v-if="canManageOrderStatus && order.order_status !== 'canceled' && order.order_status !== 'completed'"
+                                                type="button"
+                                                class="h-7 w-7 rounded-lg border border-rose-200 bg-white flex items-center justify-center text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition shadow-2xs"
+                                                title="Batalkan Pesanan"
+                                                @click="cancelOrder(order)"
+                                            >
+                                                <XCircle class="w-3.5 h-3.5" />
+                                            </button>
+
+                                            <button
+                                                v-if="canDeleteOrder && order.order_status === 'canceled'"
+                                                type="button"
+                                                class="h-7 w-7 rounded-lg border border-rose-300 bg-rose-50 flex items-center justify-center text-rose-600 hover:bg-rose-100 transition shadow-2xs"
+                                                title="Hapus Permanen"
+                                                @click="discardOrder(order)"
+                                            >
+                                                <Trash2 class="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Empty Column State -->
+                            <div
+                                v-if="!ordersByStatus[col.key]?.length"
+                                class="h-28 border border-dashed border-pink-200/80 rounded-lg flex flex-col items-center justify-center text-center p-3 text-pink-400"
+                            >
+                                <span class="text-xs font-semibold">Tidak ada order</span>
+                                <span class="text-[10px] text-pink-300 mt-0.5">Tarik kartu ke sini</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TABLE VIEW (ALTERNATIF) -->
+            <section v-else class="rounded-2xl border border-pink-200/80 bg-white p-4 sm:p-5 shadow-xs">
+                <!-- Status Tabs (Semua Status + 5 Status Lainnya) -->
                 <div class="mb-4 flex flex-wrap gap-2">
                     <button
                         v-for="status in orderStatusSummaryWithAll"
-                        :key="`status-${status.value || 'all'}`"
+                        :key="`status-tab-${status.value || 'all'}`"
                         type="button"
                         class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition"
                         :class="activeOrderStatus === status.value
-                            ? 'border-pink-600 bg-pink-600 text-white'
+                            ? 'border-pink-600 bg-pink-600 text-white shadow-xs'
                             : 'border-pink-200 bg-pink-50 text-pink-700 hover:border-pink-300 hover:bg-pink-100'"
                         @click="filterOrdersByStatus(status.value)"
                     >
                         <span>{{ status.label }}</span>
                         <span
-                            class="rounded-md px-1.5 py-0.5 text-[10px]"
-                            :class="activeOrderStatus === status.value ? 'bg-white/20 text-white' : 'bg-pink-100 text-pink-700'"
+                            class="rounded-md px-1.5 py-0.5 text-[10px] font-bold"
+                            :class="activeOrderStatus === status.value ? 'bg-white/20 text-white' : 'bg-pink-200/70 text-pink-800'"
                         >
                             {{ status.count }}
                         </span>
@@ -420,6 +870,14 @@ watch(
                     <table class="min-w-full divide-y divide-pink-100">
                         <thead>
                             <tr class="text-left text-xs uppercase tracking-wide text-pink-600">
+                                <th class="px-3 py-2 cursor-pointer select-none hover:text-pink-800" @click="handleSort('id')">
+                                    <div class="flex items-center gap-1">
+                                        ID
+                                        <ChevronUp v-if="sortBy === 'id' && sortDir === 'asc'" class="w-3 h-3" />
+                                        <ChevronDown v-else-if="sortBy === 'id' && sortDir === 'desc'" class="w-3 h-3" />
+                                        <ArrowUpDown v-else class="w-3 h-3 opacity-20" />
+                                    </div>
+                                </th>
                                 <th class="px-3 py-2 cursor-pointer select-none hover:text-pink-800" @click="handleSort('customer_id')">
                                     <div class="flex items-center gap-1">
                                         Customer
@@ -430,13 +888,13 @@ watch(
                                 </th>
                                 <th class="px-3 py-2 cursor-pointer select-none hover:text-pink-800" @click="handleSort('shipping_date')">
                                     <div class="flex items-center gap-1">
-                                        Tanggal
+                                        Tanggal Pengiriman
                                         <ChevronUp v-if="sortBy === 'shipping_date' && sortDir === 'asc'" class="w-3 h-3" />
                                         <ChevronDown v-else-if="sortBy === 'shipping_date' && sortDir === 'desc'" class="w-3 h-3" />
                                         <ArrowUpDown v-else class="w-3 h-3 opacity-20" />
                                     </div>
                                 </th>
-                                <th class="px-3 py-2">Shipping</th>
+                                <th class="px-3 py-2">Tipe</th>
                                 <th class="px-3 py-2 cursor-pointer select-none hover:text-pink-800" @click="handleSort('total')">
                                     <div class="flex items-center gap-1">
                                         Total
@@ -448,25 +906,43 @@ watch(
                                 <th class="px-3 py-2">Ongkir</th>
                                 <th class="px-3 py-2">Status</th>
                                 <th class="px-3 py-2">Pembayaran</th>
-                                <th class="px-3 py-2">Detail</th>
-                                <th v-if="canManageOrderStatus" class="px-3 py-2">Atur Status</th>
+                                <th class="px-3 py-2 text-right">Aksi</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-pink-100 text-sm">
-                            <tr v-for="order in orders.data" :key="order.id">
-                                <td class="px-3 py-2 font-medium text-pink-950">{{ order.customer?.name ?? '-' }}</td>
-                                <td class="px-3 py-2 text-pink-800">{{ formatShippingDate(order.shipping_date) }} {{ formatShippingTime(order.shipping_time) }}</td>
-                                <td class="px-3 py-2 capitalize text-pink-800">{{ order.shipping_type }}</td>
-                                <td class="px-3 py-2 font-semibold text-pink-900">{{ formatCurrency(order.total) }}</td>
-                                <td class="px-3 py-2 text-pink-800">{{ formatCurrency(order.shipping_fee ?? 0) }}</td>
+                            <tr v-for="order in filteredOrdersList" :key="order.id" class="hover:bg-pink-50/40">
+                                <td class="px-3 py-2 font-bold text-pink-900">#{{ order.id }}</td>
+                                <td class="px-3 py-2 font-medium text-pink-950">
+                                    {{ order.customer?.name ?? '-' }}
+                                    <span class="block text-[11px] text-pink-700/70 font-normal">{{ order.customer?.phone_number ?? '' }}</span>
+                                </td>
+                                <td class="px-3 py-2 text-pink-800 text-xs">{{ formatShippingDate(order.shipping_date) }} {{ formatShippingTime(order.shipping_time) }}</td>
+                                <td class="px-3 py-2 text-xs">
+                                    <div class="flex items-center gap-1">
+                                        <span
+                                            class="px-2 py-0.5 rounded-full text-[10px] font-bold capitalize"
+                                            :class="order.shipping_type === 'delivery' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-amber-50 text-amber-700 border border-amber-100'"
+                                        >
+                                            {{ order.shipping_type }}
+                                        </span>
+                                        <span
+                                            class="px-1.5 py-0.2 rounded text-[9px] font-bold"
+                                            :class="order.order_type === 'inventory' ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'"
+                                        >
+                                            {{ order.order_type === 'inventory' ? 'Gudang' : 'Bouquet' }}
+                                        </span>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-2 font-semibold text-pink-900 text-xs">{{ formatCurrency(order.total) }}</td>
+                                <td class="px-3 py-2 text-pink-800 text-xs">{{ formatCurrency(order.shipping_fee ?? 0) }}</td>
                                 <td class="px-3 py-2">
-                                    <span class="rounded-lg bg-pink-100 px-2 py-1 text-xs font-semibold text-pink-700">
+                                    <span class="rounded-lg bg-pink-100 px-2.5 py-1 text-xs font-semibold text-pink-700">
                                         {{ formatOrderStatus(order.order_status) }}
                                     </span>
                                 </td>
                                 <td class="px-3 py-2">
                                     <span
-                                        class="rounded-lg px-2 py-1 text-xs font-semibold"
+                                        class="rounded-lg px-2.5 py-1 text-xs font-semibold"
                                         :class="order.payment_status === 'paid'
                                             ? 'bg-emerald-100 text-emerald-700'
                                             : order.payment_status === 'dp'
@@ -476,8 +952,8 @@ watch(
                                         {{ formatPaymentStatus(order.payment_status) }}
                                     </span>
                                 </td>
-                                <td class="px-3 py-2">
-                                    <div class="flex items-center gap-1">
+                                <td class="px-3 py-2 text-right">
+                                    <div class="flex items-center justify-end gap-1.5">
                                         <BaseButton
                                             as="Link"
                                             :href="route('orders.print', order.id)"
@@ -489,7 +965,6 @@ watch(
                                             <Printer class="h-4 w-4" />
                                         </BaseButton>
                                         <BaseButton
-                                            v-if="order.order_status !== 'completed' && order.order_status !== 'canceled'"
                                             as="Link"
                                             :href="route('orders.edit', order.id)"
                                             variant="secondary"
@@ -500,59 +975,37 @@ watch(
                                             <Pencil class="h-4 w-4" />
                                         </BaseButton>
                                         <button
+                                            v-if="canManageOrderStatus && (order.order_status === 'completed' || order.order_status === 'canceled' || order.is_hidden)"
                                             type="button"
-                                            class="inline-flex rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-xs font-semibold text-pink-700 transition hover:bg-pink-50"
+                                            class="h-8 w-8 rounded-lg border flex items-center justify-center transition"
+                                            :class="order.is_hidden ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
+                                            :title="order.is_hidden ? 'Tampilkan order kembali' : 'Sembunyikan (Hide) order dari papan status'"
+                                            @click="toggleHideOrder(order)"
+                                        >
+                                            <component :is="order.is_hidden ? Eye : EyeOff" class="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-xs font-semibold text-pink-700 hover:bg-pink-50"
                                             @click="openDetailModal(order)"
                                         >
-                                            Lihat Detail
+                                            Detail
                                         </button>
-                                    </div>
-                                </td>
-                                <td v-if="canManageOrderStatus" class="px-3 py-2">
-                                    <div class="flex items-center gap-2">
                                         <button
-                                            v-if="order.payment_status !== 'paid' && order.order_status !== 'canceled'"
+                                            v-if="canManageOrderStatus && order.payment_status !== 'paid' && order.order_status !== 'canceled'"
                                             type="button"
-                                            class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                            class="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition disabled:opacity-50"
                                             :disabled="updatingPaymentOrderId === order.id"
+                                            title="Tandai Lunas"
                                             @click="markOrderAsPaid(order)"
                                         >
-                                            {{ updatingPaymentOrderId === order.id ? 'Saving...' : 'Lunas' }}
-                                        </button>
-                                        <button
-                                            v-if="order.order_status !== 'canceled' && order.order_status !== 'completed'"
-                                            type="button"
-                                            class="rounded-lg border border-pink-200 bg-white p-1.5 text-pink-600 transition hover:bg-pink-50 disabled:opacity-50"
-                                            title="Batalkan Order"
-                                            :disabled="updatingOrderId === order.id"
-                                            @click="cancelOrder(order)"
-                                        >
-                                            <XCircle class="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            v-if="canDeleteOrder && order.order_status === 'canceled'"
-                                            type="button"
-                                            class="rounded-lg border border-pink-200 bg-white p-1.5 text-pink-600 transition hover:bg-pink-50 disabled:opacity-50"
-                                            title="Discard/Delete Permanen"
-                                            :disabled="updatingOrderId === order.id"
-                                            @click="discardOrder(order)"
-                                        >
-                                            <Trash2 class="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            v-if="getNextStatus(order.order_status, order.shipping_type)"
-                                            type="button"
-                                            class="rounded-lg bg-pink-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                            :disabled="updatingOrderId === order.id || isBlockedByPayment(order)"
-                                            @click="stepOrderStatus(order)"
-                                        >
-                                            {{ updatingOrderId === order.id ? 'Saving...' : getActionLabel(order) }}
+                                            {{ updatingPaymentOrderId === order.id ? '...' : 'Lunas' }}
                                         </button>
                                     </div>
                                 </td>
                             </tr>
-                            <tr v-if="orders.data.length === 0">
-                                <td :colspan="canManageOrderStatus ? 9 : 8" class="px-3 py-6 text-center text-sm text-pink-700">Belum ada order.</td>
+                            <tr v-if="ordersList.length === 0">
+                                <td colspan="9" class="px-3 py-6 text-center text-sm text-pink-700">Belum ada order.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -605,6 +1058,26 @@ watch(
                         >
                             <Printer class="w-4 h-4" />
                             Cetak Struk
+                        </BaseButton>
+                        <BaseButton
+                            as="Link"
+                            :href="route('orders.edit', selectedOrder.id)"
+                            variant="secondary"
+                            size="sm"
+                            class="text-blue-600 border-blue-200 hover:bg-blue-50"
+                        >
+                            <Pencil class="w-4 h-4" />
+                            Edit Order
+                        </BaseButton>
+                        <BaseButton
+                            v-if="canManageOrderStatus && (selectedOrder.order_status === 'completed' || selectedOrder.order_status === 'canceled' || selectedOrder.is_hidden)"
+                            variant="secondary"
+                            size="sm"
+                            :class="selectedOrder.is_hidden ? 'border-amber-300 text-amber-700 hover:bg-amber-50' : 'text-slate-600 border-slate-200 hover:bg-slate-50'"
+                            @click="toggleHideOrder(selectedOrder)"
+                        >
+                            <component :is="selectedOrder.is_hidden ? Eye : EyeOff" class="w-4 h-4" />
+                            {{ selectedOrder.is_hidden ? 'Tampilkan' : 'Hide' }}
                         </BaseButton>
                         <button
                             type="button"
