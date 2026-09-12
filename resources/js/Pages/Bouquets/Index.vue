@@ -11,7 +11,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import GlobalDetailModal from '@/Components/GlobalDetailModal.vue';
 import axios from 'axios';
-import { Plus, Edit2, Trash, RotateCcw, XCircle } from 'lucide-vue-next';
+import { Plus, Edit2, Trash, RotateCcw, XCircle, Download, Upload, Info } from 'lucide-vue-next';
 import { toast } from 'vue-sonner';
 import { cn } from '@/lib/utils';
 
@@ -33,10 +33,57 @@ const resolvedCategoryOptions = computed(() => props.categoryOptions || []);
 // ─────────────────────────────────────────────────────────────────────────────
 const activeTab = computed(() => props.tab || 'units');
 const showModal = ref(false);
+const showImportModal = ref(false);
 const showQuickDetail = ref(false);
 const editingItem = ref(null);
 const detailItem = ref(null);
 const auditData = ref(null);
+
+const importForm = useForm({
+    file: null,
+    type_id: '',
+});
+
+const openImportModal = () => {
+    importForm.reset();
+    importForm.clearErrors();
+    showImportModal.value = true;
+};
+
+const closeImportModal = () => {
+    showImportModal.value = false;
+    importForm.reset();
+    importForm.clearErrors();
+};
+
+const onImportFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        importForm.file = file;
+    }
+};
+
+const submitImport = () => {
+    importForm.post(route('bouquet-units.import'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            closeImportModal();
+        },
+    });
+};
+
+const exportExcel = () => {
+    const params = new URLSearchParams({
+        search: props.filters?.search || '',
+        type_id: props.filters?.type_id || '',
+        active_status: props.filters?.active_status || 'active',
+        item_type: props.filters?.item_type || 'catalog',
+        sort_by: props.filters?.sort_by || 'created_at',
+        sort_dir: props.filters?.sort_dir || 'desc',
+        ...(props.filters?.trashed ? { trashed: 1 } : {}),
+    });
+    window.location.href = route('bouquet-units.export') + '?' + params.toString();
+};
 
 const openQuickDetail = async (item) => {
     detailItem.value = item;
@@ -258,14 +305,32 @@ const generateSlug = () => {
 <template>
     <AppLayout title="Bouquet Management">
         <template #header>
-            <div class="flex items-center justify-between">
+            <div class="flex flex-wrap items-center justify-between gap-4">
                 <h2 class="font-semibold text-xl text-foreground leading-tight">
                     Bouquet Management
                 </h2>
-                <PrimaryButton @click="openCreateModal" class="rounded-xl flex items-center gap-2">
-                    <Plus class="w-4 h-4" />
-                    New {{ activeTab === 'categories' ? 'Category' : activeTab === 'types' ? 'Type' : 'Bouquet' }}
-                </PrimaryButton>
+                <div class="flex items-center gap-2">
+                    <SecondaryButton
+                        v-if="activeTab === 'units'"
+                        class="rounded-xl flex items-center gap-2"
+                        @click="exportExcel"
+                    >
+                        <Download class="w-4 h-4 text-rose-600" />
+                        Export Excel
+                    </SecondaryButton>
+                    <SecondaryButton
+                        v-if="activeTab === 'units'"
+                        class="rounded-xl flex items-center gap-2"
+                        @click="openImportModal"
+                    >
+                        <Upload class="w-4 h-4 text-rose-600" />
+                        Import Bouquet
+                    </SecondaryButton>
+                    <PrimaryButton @click="openCreateModal" class="rounded-xl flex items-center gap-2">
+                        <Plus class="w-4 h-4" />
+                        New {{ activeTab === 'categories' ? 'Category' : activeTab === 'types' ? 'Type' : 'Bouquet' }}
+                    </PrimaryButton>
+                </div>
             </div>
         </template>
 
@@ -619,6 +684,82 @@ const generateSlug = () => {
             :type="activeTab === 'categories' ? 'Category' : activeTab === 'types' ? 'Type' : 'Bouquet'"
             @close="closeQuickDetail"
         />
+
+        <!-- Import Bouquet Modal -->
+        <Modal :show="showImportModal" @close="closeImportModal" max-width="md">
+            <div class="p-6 space-y-6">
+                <div class="flex items-center justify-between pb-4 border-b border-border">
+                    <div class="flex items-center gap-2">
+                        <div class="p-2 bg-rose-100 text-rose-700 rounded-xl">
+                            <Upload class="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-foreground">Import Bouquet Sekaligus</h3>
+                            <p class="text-xs text-muted-foreground">Tambah atau perbarui data katalog bouquet via file Excel.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs space-y-2 text-rose-900">
+                    <p class="font-bold flex items-center gap-1.5">
+                        <Info class="w-4 h-4 text-rose-600" />
+                        Petunjuk Import:
+                    </p>
+                    <ul class="list-disc list-inside space-y-1 text-rose-800">
+                        <li>Jika SKU / Kode Bouquet sudah ada, data nama & harga akan diperbarui.</li>
+                        <li>Jika SKU / Kode Bouquet baru, bouquet baru akan dibuat.</li>
+                        <li>Pastikan nama tipe bouquet sesuai dengan tipe yang terdaftar di sistem.</li>
+                    </ul>
+                    <div class="pt-2">
+                        <a
+                            :href="route('bouquet-units.template')"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg text-xs transition shadow-sm"
+                        >
+                            <Download class="w-3.5 h-3.5" />
+                            Download Template Excel
+                        </a>
+                    </div>
+                </div>
+
+                <form class="space-y-4" @submit.prevent="submitImport">
+                    <div class="space-y-2">
+                        <InputLabel value="Tipe Default (Opsional)" />
+                        <select
+                            v-model="importForm.type_id"
+                            class="w-full text-sm border-secondary rounded-xl p-2.5 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        >
+                            <option value="">Gunakan tipe dari kolom Excel</option>
+                            <option v-for="type in resolvedTypeOptions" :key="type.id" :value="type.id">
+                                {{ type.name }} {{ type.category?.name ? `(${type.category.name})` : '' }}
+                            </option>
+                        </select>
+                        <p class="text-[11px] text-muted-foreground">Dipakai jika kolom tipe di baris Excel dikosongkan.</p>
+                        <InputError :message="importForm.errors.type_id" />
+                    </div>
+
+                    <div class="space-y-2">
+                        <InputLabel value="Pilih File Excel (.xlsx / .xls)" />
+                        <input
+                            type="file"
+                            accept=".xlsx,.xls,.csv"
+                            class="w-full text-sm border border-secondary rounded-xl p-2.5 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+                            @change="onImportFileChange"
+                            required
+                        >
+                        <InputError :message="importForm.errors.file" />
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-4 border-t border-border">
+                        <SecondaryButton type="button" @click="closeImportModal" :disabled="importForm.processing">
+                            Batal
+                        </SecondaryButton>
+                        <PrimaryButton :disabled="importForm.processing || !importForm.file" class="bg-rose-600 hover:bg-rose-700">
+                            {{ importForm.processing ? 'Mengimpor...' : 'Mulai Import' }}
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
     </AppLayout>
 </template>
 

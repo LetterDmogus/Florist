@@ -203,4 +203,46 @@ class StockMovementController extends Controller
         return redirect()->route('stock-movements.index')
             ->with('success', $message);
     }
+
+    public function export(Request $request): \Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        $filters = $request->only(['search', 'item_id', 'type', 'date_from', 'date_to', 'sort_by', 'sort_dir']);
+        $filename = 'stock-movements-' . now()->format('Ymd-His') . '.xlsx';
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\StockMovementExport($filters),
+            $filename
+        );
+    }
+
+    public function template(): \Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\StockPurchaseTemplateExport(),
+            'template-import-pembelian.xlsx'
+        );
+    }
+
+    public function import(
+        \App\Http\Requests\ImportStockPurchaseRequest $request,
+        \App\Actions\ImportStockPurchaseAction $action
+    ): RedirectResponse {
+        $file = $request->file('file');
+
+        try {
+            $result = $action->handle($file->getRealPath(), $request->user());
+
+            $msg = "Import berhasil! {$result['success_count']} data pembelian berhasil ditambahkan.";
+            if ($result['skipped_count'] > 0) {
+                $msg .= " ({$result['skipped_count']} data dilewati).";
+                if (!empty($result['errors'])) {
+                    $msg .= ' Catatan: ' . implode(', ', $result['errors']);
+                }
+            }
+
+            return redirect()->route('stock-movements.index')->with('success', $msg);
+        } catch (\Throwable $e) {
+            return redirect()->route('stock-movements.index')->with('error', 'Gagal mengimpor data: ' . $e->getMessage());
+        }
+    }
 }

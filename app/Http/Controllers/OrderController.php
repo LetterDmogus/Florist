@@ -585,9 +585,16 @@ class OrderController extends Controller
                 ];
             }
 
-            $lockedOrder->update([
+            $updates = [
                 'payment_status' => $targetStatus,
-            ]);
+            ];
+
+            // Jika status diubah menjadi Lunas, hilangkan nilai DP agar tidak tetap tercatat sebagai DP / piutang
+            if ($targetStatus === 'paid') {
+                $updates['down_payment'] = null;
+            }
+
+            $lockedOrder->update($updates);
 
             activity('orders')
                 ->causedBy($request->user())

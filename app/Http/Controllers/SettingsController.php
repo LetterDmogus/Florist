@@ -33,7 +33,7 @@ class SettingsController extends Controller
         $validated = $request->validate([
             'store_name' => 'required|string|max:255',
             'address' => 'required|string',
-            'phone' => 'required|string|max:20',
+            'phone' => 'required|string|max:255',
             'receipt_note' => 'nullable|string',
             'mon_fri' => 'required|string',
             'sat_sun' => 'required|string',

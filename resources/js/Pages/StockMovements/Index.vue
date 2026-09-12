@@ -12,7 +12,7 @@ import BaseButton from '@/Components/BaseButton.vue';
 import GlobalDetailModal from '@/Components/GlobalDetailModal.vue';
 import axios from 'axios';
 import { Head, useForm } from '@inertiajs/vue3';
-import { ArrowUpRight, ArrowDownLeft, Plus, History, ShoppingBag, User, Truck, Clock, Info } from 'lucide-vue-next';
+import { ArrowUpRight, ArrowDownLeft, Plus, History, ShoppingBag, User, Truck, Clock, Info, FileSpreadsheet, Upload, Download } from 'lucide-vue-next';
 
 const props = defineProps({
     movements: Object,
@@ -25,10 +25,47 @@ const props = defineProps({
 });
 
 const showModal = ref(false);
+const showImportModal = ref(false);
 const showQuickDetail = ref(false);
 const detailItem = ref(null);
 const auditData = ref(null);
 const deliveryMode = ref('new');
+
+const importForm = useForm({
+    file: null,
+});
+
+const exportUrl = computed(() => {
+    return route('stock-movements.export', props.filters || {});
+});
+
+const openImportModal = () => {
+    importForm.reset();
+    importForm.clearErrors();
+    showImportModal.value = true;
+};
+
+const closeImportModal = () => {
+    showImportModal.value = false;
+    importForm.reset();
+    importForm.clearErrors();
+};
+
+const onImportFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        importForm.file = file;
+    }
+};
+
+const submitImport = () => {
+    importForm.post(route('stock-movements.import'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            closeImportModal();
+        },
+    });
+};
 
 const openQuickDetail = async (item) => {
     detailItem.value = item;
@@ -286,14 +323,35 @@ const submit = () => {
         <Head title="Stock Movements" />
         
         <template #header>
-            <div class="flex items-center justify-between gap-4">
+            <div class="flex flex-wrap items-center justify-between gap-4">
                 <h2 class="font-semibold text-xl text-foreground leading-tight">
                     Stock Movements
                 </h2>
-                <PrimaryButton v-if="canCreateStockMovement" class="rounded-xl flex items-center gap-2" @click="openCreateModal">
-                    <Plus class="w-4 h-4" />
-                    New Movement
-                </PrimaryButton>
+                <div class="flex items-center gap-2">
+                    <a
+                        :href="exportUrl"
+                        class="inline-flex items-center gap-2 rounded-xl bg-white border border-secondary px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary/40 transition shadow-sm"
+                    >
+                        <Download class="w-4 h-4 text-emerald-600" />
+                        Export Excel
+                    </a>
+                    <SecondaryButton
+                        v-if="canCreateStockMovement"
+                        class="rounded-xl flex items-center gap-2"
+                        @click="openImportModal"
+                    >
+                        <Upload class="w-4 h-4 text-emerald-600" />
+                        Import Pembelian
+                    </SecondaryButton>
+                    <PrimaryButton
+                        v-if="canCreateStockMovement"
+                        class="rounded-xl flex items-center gap-2"
+                        @click="openCreateModal"
+                    >
+                        <Plus class="w-4 h-4" />
+                        New Movement
+                    </PrimaryButton>
+                </div>
             </div>
         </template>
 
@@ -671,5 +729,66 @@ const submit = () => {
                 </div>
             </template>
         </GlobalDetailModal>
+
+        <!-- Import Pembelian Modal -->
+        <Modal :show="showImportModal" @close="closeImportModal" max-width="md">
+            <div class="p-6 space-y-6">
+                <div class="flex items-center justify-between pb-4 border-b border-border">
+                    <div class="flex items-center gap-2">
+                        <div class="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+                            <Upload class="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-foreground">Import Pembelian Sekaligus</h3>
+                            <p class="text-xs text-muted-foreground">Tambah pergerakan stok masuk (in) & laporan pembelian dari Excel.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-xs space-y-2 text-emerald-900">
+                    <p class="font-bold flex items-center gap-1.5">
+                        <Info class="w-4 h-4 text-emerald-600" />
+                        Petunjuk Import:
+                    </p>
+                    <ul class="list-disc list-inside space-y-1 text-emerald-800">
+                        <li>Data yang diimport akan <b>menambah stok</b> barang terkait, bukan menimpa.</li>
+                        <li>Pastikan <b>Kode Item</b> sesuai dengan yang terdaftar di sistem.</li>
+                        <li>Unduh template di bawah agar susunan kolom sesuai.</li>
+                    </ul>
+                    <div class="pt-2">
+                        <a
+                            :href="route('stock-movements.template')"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition shadow-sm"
+                        >
+                            <Download class="w-3.5 h-3.5" />
+                            Download Template Excel
+                        </a>
+                    </div>
+                </div>
+
+                <form class="space-y-4" @submit.prevent="submitImport">
+                    <div class="space-y-2">
+                        <InputLabel value="Pilih File Excel (.xlsx / .xls)" />
+                        <input
+                            type="file"
+                            accept=".xlsx,.xls,.csv"
+                            class="w-full text-sm border border-secondary rounded-xl p-2.5 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+                            @change="onImportFileChange"
+                            required
+                        >
+                        <InputError :message="importForm.errors.file" />
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-4 border-t border-border">
+                        <SecondaryButton type="button" @click="closeImportModal" :disabled="importForm.processing">
+                            Batal
+                        </SecondaryButton>
+                        <PrimaryButton :disabled="importForm.processing || !importForm.file" class="bg-emerald-600 hover:bg-emerald-700">
+                            {{ importForm.processing ? 'Mengimpor...' : 'Mulai Import' }}
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
     </AppLayout>
 </template>

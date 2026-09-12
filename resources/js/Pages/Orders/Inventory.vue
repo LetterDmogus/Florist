@@ -162,6 +162,17 @@ const addInventoryItem = (item) => {
     });
 };
 
+const updateItemQuantity = (item, val) => {
+    let num = parseInt(val, 10);
+    if (isNaN(num) || num < 1) {
+        num = 1;
+    }
+    if (num > item.max_stock) {
+        num = item.max_stock;
+    }
+    item.quantity = num;
+};
+
 const removeCartItem = (cartId) => {
     cartItems.value = cartItems.value.filter((item) => item.cart_id !== cartId);
 };
@@ -268,6 +279,15 @@ const generateRequestId = () => {
 };
 
 const submitOrder = () => {
+    // Pastikan tidak ada quantity yang melebihi max_stock atau < 1
+    for (const item of cartItems.value) {
+        updateItemQuantity(item, item.quantity);
+        if (item.quantity > item.max_stock) {
+            alert(`Jumlah untuk "${item.display_name}" melebihi stok yang tersedia (Maks: ${item.max_stock}).`);
+            return;
+        }
+    }
+
     form.request_id = generateRequestId();
     form.order_type = 'inventory';
     form.customer_mode = customerMode.value;
@@ -507,7 +527,10 @@ watch(deliverySearch, debounce(() => fetchDeliveryOptions(), 300));
                                                         class="px-2 py-0.5 hover:bg-blue-50 text-blue-600 disabled:opacity-30 text-xs font-bold"
                                                     >-</button>
                                                     <input 
-                                                        v-model="item.quantity" 
+                                                        :value="item.quantity"
+                                                        @input="item.quantity = $event.target.value"
+                                                        @blur="updateItemQuantity(item, $event.target.value)"
+                                                        @change="updateItemQuantity(item, $event.target.value)"
                                                         type="number" 
                                                         min="1" 
                                                         :max="item.max_stock"

@@ -154,8 +154,13 @@ class StoreOrderRequest extends FormRequest
                         $validator->errors()->add("details.{$index}.inventory_item_id", 'Item inventory wajib dipilih.');
                     }
 
-                    if (empty($detail['quantity'])) {
-                        $validator->errors()->add("details.{$index}.quantity", 'Quantity wajib diisi untuk item inventory.');
+                    if (empty($detail['quantity']) || (int) $detail['quantity'] < 1) {
+                        $validator->errors()->add("details.{$index}.quantity", 'Quantity wajib diisi minimal 1.');
+                    } elseif (! empty($detail['inventory_item_id'])) {
+                        $itemUnit = \App\Models\ItemUnit::find($detail['inventory_item_id']);
+                        if ($itemUnit && (int) $detail['quantity'] > (int) $itemUnit->stock) {
+                            $validator->errors()->add("details.{$index}.quantity", "Stok untuk {$itemUnit->name} tidak mencukupi (Tersisa: {$itemUnit->stock}, Diminta: {$detail['quantity']}).");
+                        }
                     }
                 }
             }

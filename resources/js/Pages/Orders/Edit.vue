@@ -360,6 +360,15 @@ const submitUpdate = () => {
         custom_image: item.custom_image || null,
     }));
 
+    const dpValue = Number(form.down_payment || 0);
+    const grandTotal = Number(orderGrandTotal.value || 0);
+
+    if (dpValue > 0) {
+        form.payment_status = dpValue >= grandTotal ? 'paid' : 'dp';
+    } else if (form.payment_status === 'dp') {
+        form.payment_status = 'paid';
+    }
+
     form.post(route('orders.update', props.order.id), {
         preserveScroll: true,
         forceFormData: true,

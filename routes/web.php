@@ -179,6 +179,15 @@ Route::middleware([
         Route::resource('bouquet-types', BouquetTypeController::class)
             ->except(['create', 'show', 'edit']);
 
+        Route::get('bouquet-units/export', [BouquetUnitController::class, 'export'])
+            ->name('bouquet-units.export');
+        Route::get('bouquet-units/template', [BouquetUnitController::class, 'template'])
+            ->name('bouquet-units.template');
+        Route::post('bouquet-units/import', [BouquetUnitController::class, 'import'])
+            ->middleware('can:bouquets.manage')
+            ->middleware('throttle:sensitive-write')
+            ->name('bouquet-units.import');
+
         Route::post('bouquet-units/{id}/restore', [BouquetUnitController::class, 'restore'])->name('bouquet-units.restore')->middleware('can:bouquets.manage');
         Route::delete('bouquet-units/{id}/force-delete', [BouquetUnitController::class, 'forceDelete'])->name('bouquet-units.force-delete')->middleware('can:bouquets.delete');
         Route::resource('bouquet-units', BouquetUnitController::class)
@@ -193,6 +202,17 @@ Route::middleware([
         // Stock Movements
         Route::get('stock-movements', [StockMovementController::class, 'index'])
             ->name('stock-movements.index');
+
+        Route::get('stock-movements/export', [StockMovementController::class, 'export'])
+            ->name('stock-movements.export');
+
+        Route::get('stock-movements/template', [StockMovementController::class, 'template'])
+            ->name('stock-movements.template');
+
+        Route::post('stock-movements/import', [StockMovementController::class, 'import'])
+            ->name('stock-movements.import')
+            ->middleware('can:stock.manage')
+            ->middleware('throttle:sensitive-write');
 
         Route::get('stock-movements/lookups/items', [StockMovementController::class, 'itemLookup'])
             ->middleware('throttle:lookup-search')

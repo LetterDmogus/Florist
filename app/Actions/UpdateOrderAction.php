@@ -69,6 +69,8 @@ class UpdateOrderAction
             }
 
             // 6. Update Metadata Order
+            $paymentStatus = $this->resolvePaymentStatus((float) $total, $downPayment, $validated['payment_status'] ?? null);
+
             $orderUpdates = [
                 'customer_id' => $customerId,
                 'total' => $total,
@@ -77,7 +79,7 @@ class UpdateOrderAction
                 'shipping_type' => $validated['shipping_type'],
                 'shipping_fee' => $shippingFee,
                 'down_payment' => $downPayment > 0 ? $downPayment : null,
-                'payment_status' => $validated['payment_status'],
+                'payment_status' => $paymentStatus,
                 'order_status' => $validated['order_status'],
                 'description' => $validated['description'] ?? null,
             ];
@@ -343,5 +345,23 @@ class UpdateOrderAction
     private function generateSerialNumber(): string
     {
         return 'CUST-' . strtoupper(Str::random(8));
+    }
+
+    private function resolvePaymentStatus(float $total, float $downPayment, ?string $explicitStatus): string
+    {
+        if ($downPayment > 0) {
+            if ($downPayment >= $total) {
+                return 'paid';
+            }
+
+            return 'dp';
+        }
+
+        // Jika tidak ada DP (0 atau null)
+        if ($explicitStatus === 'unpaid') {
+            return 'unpaid';
+        }
+
+        return 'paid';
     }
 }

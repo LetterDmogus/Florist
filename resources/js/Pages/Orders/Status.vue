@@ -648,21 +648,30 @@ watch(
                                 v-for="order in ordersByStatus[col.key]"
                                 :key="order.id"
                                 :draggable="canManageOrderStatus && updatingOrderId !== order.id"
-                                class="bg-white rounded-lg border border-pink-200/90 shadow-2xs hover:shadow-xs transition-all select-none group overflow-hidden"
+                                class="rounded-lg border shadow-2xs hover:shadow-xs transition-all select-none group overflow-hidden"
                                 :class="[
-                                    canManageOrderStatus ? 'cursor-grab active:cursor-grabbing hover:border-pink-400' : '',
+                                    order.payment_status === 'dp'
+                                        ? 'bg-amber-50/60 border-amber-300 hover:border-amber-400'
+                                        : 'bg-white border-pink-200/90 hover:border-pink-400',
+                                    canManageOrderStatus ? 'cursor-grab active:cursor-grabbing' : '',
                                     draggingOrderId === order.id ? 'opacity-40 scale-95' : '',
                                     updatingOrderId === order.id ? 'opacity-60 pointer-events-none' : '',
-                                    isOrderMinimized(order.id) ? 'bg-pink-50/20' : ''
+                                    isOrderMinimized(order.id) ? (order.payment_status === 'dp' ? 'bg-amber-50/30' : 'bg-pink-50/20') : ''
                                 ]"
                                 @dragstart="onDragStart($event, order)"
                                 @dragend="onDragEnd"
                             >
                                 <!-- Order Header (ID & Teks Pickup/Delivery di sampingnya, serta Payment Status + Lunas & Minimize Button) -->
-                                <div class="px-2.5 py-1.5 bg-pink-50/40 border-b border-pink-100 flex items-start justify-between gap-1.5">
+                                <div
+                                    class="px-2.5 py-1.5 border-b flex items-start justify-between gap-1.5"
+                                    :class="order.payment_status === 'dp' ? 'bg-amber-100/50 border-amber-200/80' : 'bg-pink-50/40 border-pink-100'"
+                                >
                                     <div class="flex flex-col gap-1 min-w-0">
                                         <div class="flex items-center gap-1.5">
-                                            <span class="text-[11px] font-black text-pink-700 font-mono">
+                                            <span
+                                                class="text-[11px] font-black font-mono"
+                                                :class="order.payment_status === 'dp' ? 'text-amber-800' : 'text-pink-700'"
+                                            >
                                                 #{{ order.id }}
                                             </span>
                                             <!-- Teks Pickup / Delivery di samping kode pesanan -->
@@ -681,42 +690,45 @@ watch(
                                             </span>
                                         </div>
 
-                                        <!-- Badge Bouquet / Gudang diletakkan di bawah kode pesanan -->
+                                        <!-- Badge Bouquet / Supply diletakkan di bawah kode pesanan -->
                                         <div>
                                             <span
                                                 class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold"
                                                 :class="order.order_type === 'inventory' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-pink-100 text-pink-800 border border-pink-200'"
-                                                :title="order.order_type === 'inventory' ? 'Order Barang Gudang' : 'Order Bouquet'"
+                                                :title="order.order_type === 'inventory' ? 'Order Supply' : 'Order Bouquet'"
                                             >
-                                                {{ order.order_type === 'inventory' ? 'Gudang' : 'Bouquet' }}
+                                                {{ order.order_type === 'inventory' ? 'Supply' : 'Bouquet' }}
                                             </span>
                                         </div>
                                     </div>
                                     
-                                    <div class="flex items-center gap-1 shrink-0">
-                                        <span
-                                            class="text-[9px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider"
-                                            :class="order.payment_status === 'paid'
-                                                ? 'bg-emerald-100 text-emerald-800'
-                                                : order.payment_status === 'dp'
-                                                    ? 'bg-amber-100 text-amber-800 font-extrabold'
-                                                    : 'bg-slate-100 text-slate-700'"
-                                        >
-                                            {{ formatPaymentStatus(order.payment_status) }}
-                                        </span>
+                                    <div class="flex items-start gap-1 shrink-0">
+                                        <!-- Payment Status Badge dan Tombol Lunas tepat di bawahnya -->
+                                        <div class="flex flex-col items-end gap-1">
+                                            <span
+                                                class="text-[9px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider"
+                                                :class="order.payment_status === 'paid'
+                                                    ? 'bg-emerald-100 text-emerald-800'
+                                                    : order.payment_status === 'dp'
+                                                        ? 'bg-amber-200/80 text-amber-900 font-extrabold border border-amber-300'
+                                                        : 'bg-slate-100 text-slate-700'"
+                                            >
+                                                {{ formatPaymentStatus(order.payment_status) }}
+                                            </span>
 
-                                        <!-- Tombol Lunas tepat di samping DP / Status Pembayaran -->
-                                        <button
-                                            v-if="canManageOrderStatus && order.payment_status !== 'paid' && order.order_status !== 'canceled'"
-                                            type="button"
-                                            class="px-1.5 py-0.2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9px] font-bold transition disabled:opacity-50 inline-flex items-center gap-0.5 shadow-2xs"
-                                            :disabled="updatingPaymentOrderId === order.id"
-                                            title="Tandai pesanan lunas"
-                                            @click="markOrderAsPaid(order)"
-                                        >
-                                            <CheckCircle2 class="w-2.5 h-2.5 inline" />
-                                            <span>{{ updatingPaymentOrderId === order.id ? '...' : 'Lunas' }}</span>
-                                        </button>
+                                            <!-- Tombol Lunas tepat di bawah badge DP / Status Pembayaran -->
+                                            <button
+                                                v-if="canManageOrderStatus && order.payment_status !== 'paid' && order.order_status !== 'canceled'"
+                                                type="button"
+                                                class="px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9px] font-bold transition disabled:opacity-50 inline-flex items-center gap-0.5 shadow-2xs"
+                                                :disabled="updatingPaymentOrderId === order.id"
+                                                title="Tandai pesanan lunas"
+                                                @click="markOrderAsPaid(order)"
+                                            >
+                                                <CheckCircle2 class="w-2.5 h-2.5 inline" />
+                                                <span>{{ updatingPaymentOrderId === order.id ? '...' : 'Lunas' }}</span>
+                                            </button>
+                                        </div>
 
                                         <!-- Tombol Minimize / Maximize Card -->
                                         <button
@@ -929,7 +941,7 @@ watch(
                                             class="px-1.5 py-0.2 rounded text-[9px] font-bold"
                                             :class="order.order_type === 'inventory' ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'"
                                         >
-                                            {{ order.order_type === 'inventory' ? 'Gudang' : 'Bouquet' }}
+                                            {{ order.order_type === 'inventory' ? 'Supply' : 'Bouquet' }}
                                         </span>
                                     </div>
                                 </td>
@@ -1130,7 +1142,7 @@ watch(
                         <tbody class="divide-y divide-pink-100 text-xs">
                             <tr v-for="detail in detailRows" :key="detail.id">
                                 <td class="px-3 py-2 font-medium text-pink-950">{{ resolveDetailName(detail) }}</td>
-                                <td class="px-3 py-2 capitalize text-pink-800">{{ detail.item_type }}</td>
+                                <td class="px-3 py-2 text-pink-800 font-semibold">{{ detail.item_type === 'inventory_item' ? 'Supply' : 'Bouquet' }}</td>
                                 <td class="px-3 py-2 text-pink-800">{{ detail.quantity }}</td>
                                 <td class="px-3 py-2 font-semibold text-pink-900">{{ formatCurrency(detail.subtotal) }}</td>
                             </tr>

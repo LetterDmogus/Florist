@@ -39,7 +39,7 @@ class Order extends Model
         'ready' => ['pending', 'on_delivery', 'completed', 'canceled'],
         'on_delivery' => ['pending', 'ready', 'completed', 'canceled'],
         'completed' => ['pending', 'ready', 'on_delivery', 'canceled'],
-        'canceled' => ['pending', 'ready'],
+        'canceled' => ['pending', 'ready', 'on_delivery', 'completed'],
     ];
 
     protected $fillable = [

@@ -62,11 +62,16 @@ const submit = () => {
                     </div>
 
                     <div class="space-y-1">
-                        <InputLabel value="Nomor Telepon" />
+                        <InputLabel value="Nomor Telepon (Bisa lebih dari 1)" />
                         <div class="relative">
-                            <TextInput v-model="form.phone" class="w-full pl-10" />
+                            <TextInput 
+                                v-model="form.phone" 
+                                class="w-full pl-10" 
+                                placeholder="Contoh: 081234567890 / 089876543210" 
+                            />
                             <Phone class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-pink-300" />
                         </div>
+                        <p class="text-[11px] text-muted-foreground mt-0.5">Bisa dipisahkan dengan tanda garis miring (nomor1 / nomor2).</p>
                     </div>
 
                     <div class="md:col-span-2 space-y-1">
@@ -82,12 +87,17 @@ const submit = () => {
                     </div>
 
                     <div class="md:col-span-2 space-y-1">
-                        <InputLabel value="Catatan di Struk" />
+                        <InputLabel value="Catatan di Struk (Mendukung Enter / Multi-baris)" />
                         <div class="relative">
-                            <TextInput v-model="form.receipt_note" class="w-full pl-10" />
-                            <MessageSquare class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-pink-300" />
+                            <textarea 
+                                v-model="form.receipt_note" 
+                                rows="4"
+                                placeholder="Contoh:&#10;BCA: 1234567890 a/n Bees Fleur&#10;Mandiri: 9876543210 a/n Bees Fleur&#10;Terima kasih telah berbelanja!"
+                                class="w-full rounded-xl border-pink-200 text-sm focus:border-pink-400 focus:ring-pink-300 font-mono text-xs pl-10 pt-2.5 leading-relaxed"
+                            ></textarea>
+                            <MessageSquare class="w-4 h-4 absolute left-3 top-3 text-pink-300" />
                         </div>
-                        <p class="text-xs text-muted-foreground mt-1 italic">Muncul di bagian paling bawah struk belanja.</p>
+                        <p class="text-xs text-muted-foreground mt-1 italic">Mendukung baris baru (Enter) agar bisa mencantumkan daftar nomor rekening bank dan pesan penutup.</p>
                     </div>
                 </div>
             </div>

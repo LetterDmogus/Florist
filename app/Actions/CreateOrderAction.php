@@ -95,6 +95,12 @@ class CreateOrderAction
                     if ($detail['item_type'] === 'inventory_item' && $detail['inventory_item_id']) {
                         $item = ItemUnit::lockForUpdate()->find($detail['inventory_item_id']);
                         if ($item) {
+                            if ($item->stock < $quantity) {
+                                throw ValidationException::withMessages([
+                                    'details' => "Stok untuk {$item->name} tidak mencukupi (Tersisa: {$item->stock}, Diminta: {$quantity}).",
+                                ]);
+                            }
+
                             $item->decrement('stock', $quantity);
 
                             \App\Models\StockMovement::create([

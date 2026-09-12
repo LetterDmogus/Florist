@@ -122,4 +122,52 @@ class BouquetUnitController extends Controller
 
         return redirect()->back()->with('success', 'Bouquet berhasil dihapus permanen.');
     }
+
+    public function export(Request $request): \Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        $filters = $request->only(['search', 'type_id', 'active_status', 'item_type', 'trashed', 'sort_by', 'sort_dir']);
+        $filename = 'bouquet-units-' . now()->format('Ymd-His') . '.xlsx';
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\BouquetUnitExport($filters),
+            $filename
+        );
+    }
+
+    public function template(): \Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\BouquetTemplateExport(),
+            'template-import-bouquet.xlsx'
+        );
+    }
+
+    public function import(
+        \App\Http\Requests\ImportBouquetUnitRequest $request,
+        \App\Actions\ImportBouquetUnitAction $action
+    ): RedirectResponse {
+        $file = $request->file('file');
+        $defaultTypeId = $request->filled('type_id') ? (int) $request->input('type_id') : null;
+
+        try {
+            $result = $action->handle($file->getRealPath(), $defaultTypeId, $request->user());
+
+            $msg = "Import berhasil! {$result['success_count']} bouquet baru ditambahkan";
+            if ($result['updated_count'] > 0) {
+                $msg .= ", {$result['updated_count']} diperbarui";
+            }
+            $msg .= '.';
+
+            if ($result['skipped_count'] > 0) {
+                $msg .= " ({$result['skipped_count']} baris dilewati).";
+                if (!empty($result['errors'])) {
+                    $msg .= ' Catatan: ' . implode(', ', $result['errors']);
+                }
+            }
+
+            return redirect()->back()->with('success', $msg);
+        } catch (\Throwable $e) {
+            return redirect()->back()->with('error', 'Gagal mengimpor bouquet: ' . $e->getMessage());
+        }
+    }
 }

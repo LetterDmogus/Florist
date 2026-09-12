@@ -12,21 +12,27 @@ use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWidths, WithStyles, WithTitle
 {
-    private int $tableHeaderRow = 10;
+    /** @var array Data baris yang sudah di-generate */
+    private array $dataRows = [];
 
-    private int $dataStartRow = 11;
-
-    private int $dataEndRow = 11;
-
+    // Indeks baris Excel (1-indexed) yang dihitung secara matematis
+    private int $summaryStartRow = 0;
+    private int $summaryEndRow = 0;
+    private int $tableHeaderRow = 0;
+    private int $dataStartRow = 0;
+    private int $dataEndRow = 0;
+    private int $tableTotalRow = 0;
     private int $profitTitleRow = 0;
-
+    private int $profitStartRow = 0;
     private int $netProfitRow = 0;
+
+    /** @var int[] Daftar baris data yang belum lunas / DP untuk di-highlight */
+    private array $unpaidDataRows = [];
 
     public function __construct(
         private readonly array $salesSummary,
@@ -34,115 +40,186 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         private readonly array $profitSummary,
         private readonly int $month,
         private readonly int $year,
-    ) {}
+    ) {
+        // Generate data dan hitung posisi baris langsung di Constructor!
+        // Ini menjamin posisi baris sudah 100% siap sebelum styles() atau array() dipanggil.
+        $this->buildExportData();
+    }
+
+    /**
+     * Membangun susunan baris dan memetakan letak indeks Excel (1-indexed).
+     */
+    private function buildExportData(): void
+    {
+        $monthLabel = CarbonImmutable::create($this->year, $this->month, 1)->translatedFormat('F');
+        $rows = [];
+
+        // Helper untuk memasukkan baris sekaligus mendapatkan nomor baris Excel (1-based)
+        $appendRow = function (array $row) use (&$rows): int {
+            $rows[] = $row;
+            return count($rows); // Nomor baris di Excel
+        };
+
+        // 1. JUDUL LAPORAN (Row 1 - 2)
+        $appendRow(['BEES FLEUR FLORIST']);
+        $appendRow(["LAPORAN PENJUALAN - {$monthLabel} {$this->year}"]);
+        $appendRow(['']); // Row 3 (Pemisah kosong)
+
+        // 2. SUMMARY PENJUALAN (Row 4 s/d 10)
+        $this->summaryStartRow = $appendRow(['', 'SUMMARY PENJUALAN']); // Row 4
+        $appendRow(['', 'Money', (float) ($this->salesSummary['money'] ?? 0)]);
+        $appendRow(['', 'Fee', (float) ($this->salesSummary['fee'] ?? 0)]);
+        $appendRow(['', 'Gosend', (float) ($this->salesSummary['gosend'] ?? 0)]);
+        $appendRow(['', 'TOTAL PENJUALAN', (float) ($this->salesSummary['total'] ?? 0)]);
+        $appendRow(['', 'TOTAL DP DITERIMA', (float) ($this->salesSummary['dp'] ?? 0)]);
+        $this->summaryEndRow = $appendRow(['', 'TOTAL PIUTANG (BELUM LUNAS / DP)', (float) ($this->salesSummary['unpaid_total'] ?? 0)]);
+        
+        $appendRow(['']); // Pemisah kosong
+
+        // 3. TABEL DATA TRANSAKSI
+        $this->tableHeaderRow = $appendRow(['No', 'Tanggal', 'Model Bouquet / Item', 'Status', 'DP Diterima', 'Belum Dibayar', 'Money', 'Fee', 'Gosend', 'Total']);
+        $this->dataStartRow = $this->tableHeaderRow + 1;
+        $this->unpaidDataRows = [];
+
+        if (empty($this->salesRows)) {
+            $appendRow(['-', '-', 'Tidak ada data penjualan pada periode ini', '-', 0, 0, 0, 0, 0, 0]);
+        } else {
+            foreach ($this->salesRows as $item) {
+                $isUnpaid = !empty($item['is_unpaid']) || in_array($item['payment_status'] ?? '', ['dp', 'unpaid'], true);
+                $statusLabel = match ($item['payment_status'] ?? '') {
+                    'dp' => 'DP',
+                    'unpaid' => 'Belum Lunas',
+                    default => 'Lunas',
+                };
+
+                $rowNum = $appendRow([
+                    (int) ($item['no'] ?? 0),
+                    (string) ($item['date'] ?? ''),
+                    (string) ($item['model'] ?? ''),
+                    $statusLabel,
+                    (float) ($item['dp'] ?? 0),
+                    (float) ($item['unpaid_amount'] ?? 0),
+                    (float) ($item['money'] ?? 0),
+                    (float) ($item['fee'] ?? 0),
+                    (float) ($item['gosend'] ?? 0),
+                    (float) ($item['total'] ?? 0),
+                ]);
+
+                if ($isUnpaid) {
+                    $this->unpaidDataRows[] = $rowNum;
+                }
+            }
+        }
+        $this->dataEndRow = count($rows);
+
+        // 4. BARIS TOTAL TABEL DATA
+        $this->tableTotalRow = $appendRow([
+            'TOTAL',
+            '',
+            '',
+            '',
+            (float) ($this->salesSummary['dp'] ?? 0),
+            (float) ($this->salesSummary['unpaid_total'] ?? 0),
+            (float) ($this->salesSummary['money'] ?? 0),
+            (float) ($this->salesSummary['fee'] ?? 0),
+            (float) ($this->salesSummary['gosend'] ?? 0),
+            (float) ($this->salesSummary['total'] ?? 0),
+        ]);
+
+        $appendRow(['']); // Spacing
+        $appendRow(['']); // Spacing
+
+        // 5. RINGKASAN LABA
+        $this->profitTitleRow = $appendRow(['', 'RINGKASAN LABA']);
+        $this->profitStartRow = $this->profitTitleRow + 1;
+
+        $appendRow(['', 'Pendapatan Florist (Fee)', (float) ($this->profitSummary['florist_income'] ?? 0)]);
+        $appendRow(['', 'Pendapatan Supply', (float) ($this->profitSummary['supply_income'] ?? 0)]);
+        $appendRow(['', 'Pembelian Stok (Cost)', (float) ($this->profitSummary['purchase_total'] ?? 0)]);
+        $appendRow(['', 'Biaya Operasional Toko', (float) ($this->profitSummary['store_expense_total'] ?? 0)]);
+        $appendRow(['', 'Biaya Bahan Baku', (float) ($this->profitSummary['raw_material_expense_total'] ?? 0)]);
+        $appendRow(['', 'LABA KOTOR', (float) ($this->profitSummary['gross_profit'] ?? 0)]);
+        $appendRow(['', 'Penyesuaian (Adjustment)', (float) ($this->profitSummary['adjustment_total'] ?? 0)]);
+        $appendRow(['', 'DP Diterima', (float) ($this->salesSummary['dp'] ?? 0)]);
+        $appendRow(['', 'Sisa Piutang Penjualan (DP / Belum Lunas)', (float) ($this->salesSummary['unpaid_total'] ?? 0)]);
+        $this->netProfitRow = $appendRow(['', 'LABA BERSIH (NET)', (float) ($this->profitSummary['net_profit'] ?? 0)]);
+
+        $this->dataRows = $rows;
+    }
 
     public function array(): array
     {
-        $monthLabel = CarbonImmutable::create($this->year, $this->month, 1)->translatedFormat('F');
-
-        $rows = [
-            ['BEES FLEUR FLORIST'],
-            ["LAPORAN PENJUALAN - {$monthLabel} {$this->year}"],
-            [],
-            ['','SUMMARY PENJUALAN'],
-            ['','Money', (float) ($this->salesSummary['money'] ?? 0)],
-            ['','Fee', (float) ($this->salesSummary['fee'] ?? 0)],
-            ['','Gosend', (float) ($this->salesSummary['gosend'] ?? 0)],
-            ['','TOTAL PENJUALAN', (float) ($this->salesSummary['total'] ?? 0)],
-            [],
-            ['No', 'Tanggal', 'Model Bouquet / Item', 'Money', 'Fee', 'Gosend', 'Total'],
-        ];
-
-        $currentRow = count($rows);
-
-        if ($this->salesRows === []) {
-            $rows[] = ['-', '-', 'Tidak ada data penjualan pada periode ini', 0, 0, 0, 0];
-            $currentRow++;
-        } else {
-            foreach ($this->salesRows as $row) {
-                $rows[] = [
-                    (int) ($row['no'] ?? 0),
-                    (string) ($row['date'] ?? ''),
-                    (string) ($row['model'] ?? ''),
-                    (float) ($row['money'] ?? 0),
-                    (float) ($row['fee'] ?? 0),
-                    (float) ($row['gosend'] ?? 0),
-                    (float) ($row['total'] ?? 0),
-                ];
-                $currentRow++;
-            }
-        }
-
-        $this->dataEndRow = $currentRow-=2;
-
-        $rows[] = [];
-        $currentRow++;
-
-        $this->profitTitleRow = $currentRow -=9;
-        $rows[] = ['','RINGKASAN LABA'];
-        $currentRow++;
-
-        $rows[] = ['','Pendapatan Florist (Fee)', (float) ($this->profitSummary['florist_income'] ?? 0)];
-        $rows[] = ['','Pendapatan Supply', (float) ($this->profitSummary['supply_income'] ?? 0)];
-        $rows[] = ['','Pembelian Stok (Cost)', (float) ($this->profitSummary['purchase_total'] ?? 0)];
-        $rows[] = ['','Biaya Operasional Toko', (float) ($this->profitSummary['store_expense_total'] ?? 0)];
-        $rows[] = ['','Biaya Bahan Baku', (float) ($this->profitSummary['raw_material_expense_total'] ?? 0)];
-        $rows[] = ['','LABA KOTOR', (float) ($this->profitSummary['gross_profit'] ?? 0)];
-        $rows[] = ['','Penyesuaian (Adjustment)', (float) ($this->profitSummary['adjustment_total'] ?? 0)];
-        $rows[] = ['','LABA BERSIH (NET)', (float) ($this->profitSummary['net_profit'] ?? 0)];
-
-        $this->netProfitRow = $currentRow + 8;
-
-        return $rows;
+        return $this->dataRows;
     }
 
     public function styles(Worksheet $sheet): array
     {
-        $sheet->mergeCells('A1:G1');
-        $sheet->mergeCells('A2:G2');
+        // 1. Judul Utama (Row 1-2)
+        $sheet->mergeCells('A1:I1');
+        $sheet->mergeCells('A2:I2');
+        $sheet->getStyle('A1:I2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A1:I1')->getFont()->setBold(true)->setSize(16)->getColor()->setRGB('9D174D');
+        $sheet->getStyle('A2:I2')->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('374151');
 
-        $sheet->getStyle('A1:G1')->getFont()->setBold(true)->setSize(16)->getColor()->setRGB('9D174D');
-        $sheet->getStyle('A1:G2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle('A2:G2')->getFont()->setBold(true)->setSize(12);
+        // 2. Kotak Summary Penjualan (Row 4 s/d 9)
+        $sheet->getStyle("B{$this->summaryStartRow}")->getFont()->setBold(true)->getColor()->setRGB('9D174D');
+        $sheet->getStyle("B" . ($this->summaryEndRow - 1) . ":C" . ($this->summaryEndRow - 1))->getFont()->setBold(true);
+        $sheet->getStyle("B{$this->summaryEndRow}:C{$this->summaryEndRow}")->getFont()->setBold(true)->getColor()->setRGB('9F1239');
+        $sheet->getStyle("B{$this->summaryStartRow}:C{$this->summaryEndRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('F472B6');
+        $sheet->getStyle("C" . ($this->summaryStartRow + 1) . ":C{$this->summaryEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
-        $sheet->getStyle('A3')->getFont()->setBold(true)->getColor()->setRGB('9D174D');
-        $sheet->getStyle('A8')->getFont()->setBold(true)->setSize(11);
-
-        $sheet->getStyle("A8:G8")->applyFromArray([
+        // 3. Header Tabel Data (Row tableHeaderRow)
+        $headerRange = "A{$this->tableHeaderRow}:J{$this->tableHeaderRow}";
+        $sheet->getStyle($headerRange)->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'DB2777']],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ]);
 
-        $tableRange = "A{$this->tableHeaderRow}:G{$this->dataEndRow}";
-        $sheet->getStyle($tableRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
-        $sheet->getStyle($tableRange)->getBorders()->getAllBorders()->getColor()->setRGB('F472B6');
-        $sheet->getStyle($tableRange)->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
-
-        for ($i = $this->dataStartRow; $i <= $this->dataEndRow; $i++) {
-            if ($i % 2 === 0) {
-                $sheet->getStyle("A{$i}:G{$i}")
-                    ->getFill()
-                    ->setFillType(Fill::FILL_SOLID)
-                    ->getStartColor()
-                    ->setRGB('FFF1F7');
+        // 4. Data Rows & Highlight
+        for ($r = $this->dataStartRow; $r <= $this->dataEndRow; $r++) {
+            // Zebra striping untuk baris genap
+            if ($r % 2 === 0) {
+                $sheet->getStyle("A{$r}:J{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFF1F7');
             }
-        }
-        $highestRow = $sheet->getHighestRow() - 1;
-        $sheet->getStyle("B{$this->tableHeaderRow}:C{$highestRow}")->getAlignment()->setWrapText(true);
-        $sheet->getStyle("A{$this->tableHeaderRow}:B{$this->dataEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-        if ($this->netProfitRow > 0) {
-            $sheet->getStyle("A{$this->netProfitRow}:G{$this->netProfitRow}")
-                ->getFont()
-                ->setBold(true)
-                ->setSize(12);
-            $sheet->getStyle("A{$this->netProfitRow}:G{$this->netProfitRow}")
-                ->getFill()
-                ->setFillType(Fill::FILL_SOLID)
-                ->getStartColor()
-                ->setRGB('FCE7F3');
+            // Alignment standar kolom
+            $sheet->getStyle("A{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("B{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("D{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         }
+
+        // Highlight merah lembut untuk baris yang belum lunas / DP
+        foreach ($this->unpaidDataRows as $r) {
+            $sheet->getStyle("A{$r}:J{$r}")->applyFromArray([
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFE4E6']], // Soft Rose
+                'font' => ['color' => ['rgb' => '9F1239'], 'bold' => true],
+            ]);
+        }
+
+        // 5. Baris Total Tabel Data
+        $sheet->mergeCells("A{$this->tableTotalRow}:D{$this->tableTotalRow}");
+        $sheet->getStyle("A{$this->tableTotalRow}:J{$this->tableTotalRow}")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => '831843']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FCE7F3']],
+        ]);
+        $sheet->getStyle("A{$this->tableTotalRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+
+        // Border seluruh tabel data (Header s/d Total)
+        $tableRange = "A{$this->tableHeaderRow}:J{$this->tableTotalRow}";
+        $sheet->getStyle($tableRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('F472B6');
+        $sheet->getStyle("A{$this->tableTotalRow}:J{$this->tableTotalRow}")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setRGB('DB2777');
+
+        // 6. Ringkasan Laba
+        $sheet->getStyle("B{$this->profitTitleRow}")->getFont()->setBold(true)->setSize(11)->getColor()->setRGB('9D174D');
+        $sheet->getStyle("B{$this->profitTitleRow}:C{$this->netProfitRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('F472B6');
+        $sheet->getStyle("C{$this->profitStartRow}:C{$this->netProfitRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+
+        // Highlight Laba Bersih
+        $sheet->getStyle("B{$this->netProfitRow}:C{$this->netProfitRow}")->applyFromArray([
+            'font' => ['bold' => true, 'size' => 11, 'color' => ['rgb' => '831843']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FCE7F3']],
+        ]);
 
         return [];
     }
@@ -150,23 +227,29 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
     public function columnFormats(): array
     {
         return [
-            'D' => '#,##0',
+            'B' => '@',
             'E' => '#,##0',
             'F' => '#,##0',
             'G' => '#,##0',
+            'H' => '#,##0',
+            'I' => '#,##0',
+            'J' => '#,##0',
         ];
     }
 
     public function columnWidths(): array
     {
         return [
-            'A' => 6,
-            'B' => 13,
-            'C' => 44,
-            'D' => 14,
-            'E' => 14,
-            'F' => 14,
-            'G' => 16,
+            'A' => 6,   // No
+            'B' => 14,  // Tanggal
+            'C' => 45,  // Model Bouquet / Item
+            'D' => 14,  // Status (DP / Belum Lunas / Lunas)
+            'E' => 16,  // DP Diterima
+            'F' => 16,  // Belum Dibayar
+            'G' => 14,  // Money
+            'H' => 14,  // Fee
+            'I' => 14,  // Gosend
+            'J' => 16,  // Total
         ];
     }
 

@@ -243,11 +243,15 @@ class ReportController extends Controller
     private function collectMonthlyData(CarbonImmutable $start, CarbonImmutable $end): array
     {
         $salesRows = $this->buildSalesRows($start, $end);
+        $totalReceivables = round($salesRows->sum('unpaid_amount'), 2);
+        $totalDp = round($salesRows->sum('dp'), 2);
         $salesSummary = [
+            'dp' => $totalDp,
             'money' => round($salesRows->sum('money'), 2),
             'fee' => round($salesRows->sum('fee'), 2),
             'gosend' => round($salesRows->sum('gosend'), 2),
             'total' => round($salesRows->sum('total'), 2),
+            'unpaid_total' => $totalReceivables,
         ];
 
         $reportEntries = ReportEntry::query()
@@ -333,7 +337,7 @@ class ReportController extends Controller
     {
         $details = OrderDetail::query()
             ->with([
-                'order:id,shipping_date,shipping_time,shipping_fee,deleted_at',
+                'order:id,shipping_date,shipping_time,shipping_fee,payment_status,down_payment,total,order_status,deleted_at',
                 'bouquetUnit:id,name,type_id',
                 'bouquetUnit.type:id,name',
                 'inventoryItem:id,name',
@@ -351,7 +355,10 @@ class ReportController extends Controller
             ->values();
 
         $processedOrders = [];
+        $orderTotals = [];
 
+        // Hitung total subtotal per order_id untuk pembagian proporsional jika diperlukan,
+        // atau tampilkan sisa piutang pada baris pertama setiap order
         return $details->map(function (OrderDetail $detail, int $index) use (&$processedOrders): array {
             $model = $this->resolveModelLabel($detail);
             $isMoneyBouquet = $this->isMoneyBouquet($detail, $model);
@@ -360,9 +367,20 @@ class ReportController extends Controller
             $fee = max(0, $total - $money);
 
             $gosend = 0.0;
-            if ($detail->order_id && ! in_array($detail->order_id, $processedOrders, true)) {
+            $unpaidAmount = 0.0;
+            $dpAmount = 0.0;
+            $isFirstItemInOrder = $detail->order_id && ! in_array($detail->order_id, $processedOrders, true);
+
+            if ($isFirstItemInOrder) {
                 $gosend = (float) ($detail->order?->shipping_fee ?? 0);
                 $processedOrders[] = $detail->order_id;
+                $dpAmount = (float) ($detail->order?->down_payment ?? 0);
+
+                $orderPaymentStatus = (string) ($detail->order?->payment_status ?? '');
+                if ($orderPaymentStatus !== 'paid' && $detail->order?->order_status !== 'canceled') {
+                    $orderTotal = (float) ($detail->order?->total ?? 0);
+                    $unpaidAmount = max(0, $orderTotal - $dpAmount);
+                }
             }
 
             return [
@@ -374,6 +392,10 @@ class ReportController extends Controller
                 'gosend' => round($gosend, 2),
                 'total' => round($total + $gosend, 2),
                 'order_id' => $detail->order_id,
+                'payment_status' => (string) ($detail->order?->payment_status ?? ''),
+                'is_unpaid' => in_array($detail->order?->payment_status, ['dp', 'unpaid'], true) && $detail->order?->order_status !== 'canceled',
+                'dp' => round($dpAmount, 2),
+                'unpaid_amount' => round($unpaidAmount, 2),
             ];
         });
     }
