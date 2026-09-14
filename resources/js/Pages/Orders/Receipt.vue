@@ -114,7 +114,7 @@ const exportAsPNG = async () => {
                         :class="layoutMode === 'thermal' ? 'bg-white text-gray-950 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900'"
                     >
                         <ReceiptIcon class="w-4 h-4 text-emerald-600" />
-                        Struk Thermal (80mm)
+                        Struk Thermal (58mm)
                     </button>
                     <button 
                         @click="layoutMode = 'landscape'"
@@ -143,11 +143,11 @@ const exportAsPNG = async () => {
         <!-- Document Preview Canvas Area -->
         <main class="w-full flex-1 p-4 md:p-8 flex flex-col items-center justify-start">
             <!-- ========================================== -->
-            <!-- 1. THERMAL RECEIPT MODE (PORTRAIT 80mm)    -->
+            <!-- 1. THERMAL RECEIPT MODE (PORTRAIT 58mm)    -->
             <!-- ========================================== -->
             <div 
                 v-if="layoutMode === 'thermal'"
-                class="bg-white shadow-xl rounded-xl p-6 w-full max-w-[88mm] font-mono text-[12px] text-gray-900 receipt-thermal-content border border-gray-200"
+                class="bg-white shadow-xl rounded-xl p-4 sm:p-5 w-full max-w-[58mm] font-mono text-[11px] text-gray-900 receipt-thermal-content border border-gray-200"
             >
             <div class="text-center space-y-1.5 pb-4 border-b border-dashed border-gray-300">
                 <div class="flex justify-center mb-1.5">
@@ -508,14 +508,16 @@ const exportAsPNG = async () => {
         padding: 0 !important;
     }
     .receipt-thermal-content {
-        width: 72mm !important;
-        max-width: 72mm !important;
-        padding: 2mm !important;
+        width: 48mm !important;
+        max-width: 48mm !important;
+        padding: 0 !important;
         margin: 0 auto !important;
         border: none !important;
         box-shadow: none !important;
-        font-size: 10px !important;
+        font-size: 9px !important;
+        line-height: 1.3 !important;
         color: #000000 !important;
+        word-break: break-word !important;
     }
     .receipt-thermal-content * {
         color: #000000 !important;
