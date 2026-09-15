@@ -417,7 +417,7 @@ const exportAsPNG = async () => {
                                 {{ item.item_type === 'bouquet' ? (item.bouquet_unit?.type?.category?.name || 'Bouquet') : (item.inventory_item?.category?.name || 'Supply') }}
                             </td>
                             <td class="p-2.5 text-center font-bold text-gray-900 text-sm">{{ item.quantity }}</td>
-                            <td class="p-2.5 text-right font-mono text-gray-700">{{ formatCurrency(item.price) }}</td>
+                            <td class="p-2.5 text-right font-mono text-gray-700">{{ formatCurrency(item.unit_price ?? item.price ?? (item.item_type === 'bouquet' ? item.bouquet_unit?.price : item.inventory_item?.price)) }}</td>
                             <td class="p-2.5 text-right font-mono font-bold text-gray-950 text-sm">{{ formatCurrency(item.subtotal) }}</td>
                         </tr>
                     </tbody>

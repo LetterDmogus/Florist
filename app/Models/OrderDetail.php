@@ -18,6 +18,7 @@ class OrderDetail extends Model
         'order_id',
         'item_type',
         'quantity',
+        'unit_price',
         'subtotal',
         'bouquet_unit_id',
         'inventory_item_id',
@@ -30,6 +31,7 @@ class OrderDetail extends Model
     {
         return [
             'quantity' => 'integer',
+            'unit_price' => 'decimal:2',
             'subtotal' => 'decimal:2',
             'money_bouquet' => 'decimal:2',
         ];

@@ -79,10 +79,13 @@ class CreateOrderAction
                     $subtotal = $this->calculateSubtotal($detail);
                     $quantity = $this->resolveQuantity($detail);
 
+                    $unitPrice = $this->resolveUnitPrice($detail);
+
                     OrderDetail::create([
                         'order_id' => $order->id,
                         'item_type' => $detail['item_type'],
                         'quantity' => $quantity,
+                        'unit_price' => $unitPrice,
                         'subtotal' => $subtotal,
                         'bouquet_unit_id' => $detail['bouquet_unit_id'] ?? null,
                         'inventory_item_id' => $detail['inventory_item_id'] ?? null,
@@ -220,21 +223,36 @@ class CreateOrderAction
         ];
     }
 
-    private function calculateSubtotal(array $detail): float
+    private function resolveUnitPrice(array $detail): float
     {
-        $quantity = $this->resolveQuantity($detail);
+        if (isset($detail['unit_price']) && is_numeric($detail['unit_price'])) {
+            return (float) $detail['unit_price'];
+        }
+
+        if (isset($detail['price']) && is_numeric($detail['price'])) {
+            return (float) $detail['price'];
+        }
 
         if ($detail['item_type'] === 'bouquet') {
             $unit = BouquetUnit::findOrFail($detail['bouquet_unit_id']);
-            $price = $unit->price;
-            $money = $detail['money_bouquet'] ?? 0;
-
-            return (float) ($price + $money) * $quantity;
+            return (float) $unit->price;
         }
 
         $unit = ItemUnit::findOrFail($detail['inventory_item_id']);
+        return (float) $unit->price;
+    }
 
-        return (float) $unit->price * $quantity;
+    private function calculateSubtotal(array $detail): float
+    {
+        $quantity = $this->resolveQuantity($detail);
+        $unitPrice = $this->resolveUnitPrice($detail);
+
+        if ($detail['item_type'] === 'bouquet') {
+            $money = (float) ($detail['money_amount'] ?? $detail['money_bouquet'] ?? 0);
+            return (float) ($unitPrice + $money) * $quantity;
+        }
+
+        return (float) $unitPrice * $quantity;
     }
 
     private function resolveDetail(StoreOrderRequest $request, array $detail): array

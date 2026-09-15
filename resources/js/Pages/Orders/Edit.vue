@@ -127,7 +127,7 @@ onMounted(() => {
             money_amount: detail.money_bouquet,
             display_name: unit?.name || 'Unknown Item',
             display_category: isBouquet ? (unit?.type?.name || '-') : (unit?.category?.name || 'Inventory'),
-            unit_price: isBouquet ? (unit?.price ?? 0) : (unit?.price ?? 0),
+            unit_price: Number(detail.unit_price ?? (isBouquet ? (unit?.price ?? 0) : (unit?.price ?? 0))),
             image_url: unit?.image_url || '',
         };
     });
@@ -349,6 +349,8 @@ const submitUpdate = () => {
         quantity: item.quantity,
         bouquet_unit_id: item.bouquet_unit_id,
         inventory_item_id: item.inventory_item_id,
+        unit_price: Number(item.unit_price || 0),
+        price: Number(item.unit_price || 0),
         money_bouquet: item.money_amount || null,
         greeting_card: item.greeting_card || null,
         sender_name: item.sender_name || null,
@@ -628,16 +630,32 @@ watch(deliverySearch, debounce(() => fetchDeliveryOptions(), 300));
                                         </div>
                                         <p class="text-[10px] text-pink-500 font-bold uppercase tracking-wider mb-1">{{ item.display_category }}</p>
                                         <div v-if="item.item_type === 'bouquet'" class="mt-3 space-y-3">
-                                            <div>
-                                                <label class="text-[10px] font-bold text-pink-800 uppercase mb-1 block">Uang di Buket (Money Bouquet)</label>
-                                                <div class="relative">
-                                                    <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-pink-400 font-bold">Rp</span>
-                                                    <input 
-                                                        v-model="item.money_amount" 
-                                                        type="number" 
-                                                        class="w-full pl-8 py-2 text-[11px] rounded-xl border-2 border-pink-100 bg-white text-emerald-600 font-bold focus:ring-pink-300 transition-all"
-                                                        placeholder="0"
-                                                    >
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label class="text-[10px] font-bold text-pink-800 uppercase mb-1 block">Harga / Jasa</label>
+                                                    <div class="relative">
+                                                        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-pink-400 font-bold">Rp</span>
+                                                        <input 
+                                                            v-model.number="item.unit_price" 
+                                                            type="number" 
+                                                            min="0"
+                                                            class="w-full pl-8 py-2 text-[11px] rounded-xl border-2 border-pink-100 bg-white text-pink-950 font-bold focus:ring-pink-300 transition-all"
+                                                            placeholder="0"
+                                                        >
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label class="text-[10px] font-bold text-emerald-800 uppercase mb-1 block">Money Bouquet</label>
+                                                    <div class="relative">
+                                                        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-emerald-500 font-bold">Rp</span>
+                                                        <input 
+                                                            v-model.number="item.money_amount" 
+                                                            type="number" 
+                                                            min="0"
+                                                            class="w-full pl-8 py-2 text-[11px] rounded-xl border-2 border-pink-100 bg-white text-emerald-600 font-bold focus:ring-pink-300 transition-all"
+                                                            placeholder="0"
+                                                        >
+                                                    </div>
                                                 </div>
                                             </div>
 

@@ -150,8 +150,9 @@ const remainingPayment = computed(() => {
                             <tr class="text-left text-xs uppercase tracking-wide text-pink-600">
                                 <th class="px-3 py-2">Item</th>
                                 <th class="px-3 py-2">Type</th>
-                                <th class="px-3 py-2">Qty</th>
-                                <th class="px-3 py-2">Subtotal</th>
+                                <th class="px-3 py-2 text-right">Harga / Jasa</th>
+                                <th class="px-3 py-2 text-center">Qty</th>
+                                <th class="px-3 py-2 text-right">Subtotal</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-pink-100 text-sm">
@@ -165,11 +166,12 @@ const remainingPayment = computed(() => {
                                     </div>
                                 </td>
                                 <td class="px-3 py-2 capitalize text-pink-800">{{ detail.item_type }}</td>
-                                <td class="px-3 py-2 text-pink-800">{{ detail.quantity }}</td>
-                                <td class="px-3 py-2 font-semibold text-pink-900">{{ formatCurrency(detail.subtotal) }}</td>
+                                <td class="px-3 py-2 text-right font-medium text-pink-900">{{ formatCurrency(detail.unit_price ?? (detail.item_type === 'bouquet' ? detail.bouquet_unit?.price : detail.inventory_item?.price)) }}</td>
+                                <td class="px-3 py-2 text-center text-pink-800">{{ detail.quantity }}</td>
+                                <td class="px-3 py-2 font-semibold text-pink-900 text-right">{{ formatCurrency(detail.subtotal) }}</td>
                             </tr>
                             <tr v-if="detailRows.length === 0">
-                                <td colspan="4" class="px-3 py-6 text-center text-sm text-pink-700">Belum ada item pada order ini.</td>
+                                <td colspan="5" class="px-3 py-6 text-center text-sm text-pink-700">Belum ada item pada order ini.</td>
                             </tr>
                         </tbody>
                     </table>

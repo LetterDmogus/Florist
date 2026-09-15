@@ -44,6 +44,8 @@ class UpdateOrderRequest extends FormRequest
             'details.*.item_type' => ['required', Rule::in(['bouquet', 'inventory_item'])],
             'details.*.mode' => ['nullable', Rule::in(['catalog', 'custom'])],
             'details.*.quantity' => ['nullable', 'integer', 'min:1'],
+            'details.*.unit_price' => ['nullable', 'numeric', 'min:0'],
+            'details.*.price' => ['nullable', 'numeric', 'min:0'],
             'details.*.bouquet_unit_id' => ['nullable', 'integer', Rule::exists('bouquet_units', 'id')->whereNull('deleted_at')],
             'details.*.inventory_item_id' => ['nullable', 'integer', Rule::exists('item_units', 'id')->whereNull('deleted_at')],
             'details.*.money_bouquet' => ['nullable', 'numeric', 'min:0'],

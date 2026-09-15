@@ -295,6 +295,8 @@ const submitOrder = () => {
         item_type: 'inventory_item',
         mode: null,
         quantity: item.quantity,
+        unit_price: Number(item.unit_price || 0),
+        price: Number(item.unit_price || 0),
         inventory_item_id: item.inventory_item_id,
     }));
 

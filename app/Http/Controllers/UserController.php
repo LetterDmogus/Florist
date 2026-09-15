@@ -72,7 +72,7 @@ class UserController extends Controller
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
-                'password' => Hash::make($validated['password']),
+                'password' => $validated['password'],
             ]);
 
             $user->syncRoles([$validated['role_name']]);
@@ -101,7 +101,7 @@ class UserController extends Controller
         ];
 
         if (! empty($validated['password'])) {
-            $payload['password'] = Hash::make($validated['password']);
+            $payload['password'] = $validated['password'];
         }
 
         DB::transaction(function () use ($user, $payload, $validated): void {

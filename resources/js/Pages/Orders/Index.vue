@@ -320,6 +320,9 @@ const submitOrder = () => {
         mode: item.mode,
         quantity: item.quantity,
         bouquet_unit_id: item.bouquet_unit_id,
+        inventory_item_id: item.inventory_item_id || null,
+        unit_price: Number(item.unit_price || 0),
+        price: Number(item.unit_price || 0),
         money_bouquet: item.money_amount ? Number(item.money_amount) : null,
         greeting_card: item.greeting_card || null,
         sender_name: item.sender_name || null,
@@ -611,26 +614,45 @@ watch(deliverySearch, debounce(() => fetchDeliveryOptions(), 300));
                                         </div>
                                     </div>
 
-                                    <!-- Greeting & Sender & Money (Custom Bouquet) -->
+                                    <!-- Price / Jasa, Greeting, Sender & Money (Bouquet) -->
                                     <div v-if="item.item_type === 'bouquet'" class="mt-2.5 pt-2 border-t border-pink-100/80 space-y-2">
                                         <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="text-[9px] font-bold text-pink-700 uppercase tracking-wider block mb-0.5">Harga / Jasa</label>
+                                                <div class="relative">
+                                                    <input 
+                                                        v-model.number="item.unit_price" 
+                                                        type="number" 
+                                                        min="0"
+                                                        placeholder="Harga / Jasa" 
+                                                        class="w-full pl-7 pr-2 py-1.5 text-[11px] font-bold rounded-lg border border-pink-200 bg-white text-pink-950 focus:ring-1 focus:ring-pink-400 focus:border-pink-400"
+                                                    >
+                                                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-pink-400">Rp</span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label class="text-[9px] font-bold text-emerald-700 uppercase tracking-wider block mb-0.5">Money Bouquet</label>
+                                                <div class="relative">
+                                                    <input 
+                                                        v-model.number="item.money_amount" 
+                                                        type="number" 
+                                                        min="0"
+                                                        placeholder="Uang di Buket" 
+                                                        class="w-full pl-7 pr-2 py-1.5 text-[11px] font-bold rounded-lg border border-pink-200 bg-white text-emerald-600 focus:ring-1 focus:ring-pink-400 focus:border-pink-400"
+                                                    >
+                                                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-emerald-500">Rp</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-1 gap-2">
                                             <div class="relative">
                                                 <input 
                                                     v-model="item.sender_name" 
                                                     type="text" 
-                                                    placeholder="Nama Pengirim" 
+                                                    placeholder="Nama Pengirim (Opsional)" 
                                                     class="w-full pl-7 pr-2 py-1.5 text-[11px] rounded-lg border border-pink-200 bg-white focus:ring-1 focus:ring-pink-400 focus:border-pink-400"
                                                 >
                                                 <User class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-pink-300" />
-                                            </div>
-                                            <div class="relative">
-                                                <input 
-                                                    v-model="item.money_amount" 
-                                                    type="number" 
-                                                    placeholder="Money Bouquet" 
-                                                    class="w-full pl-7 pr-2 py-1.5 text-[11px] rounded-lg border border-pink-200 bg-white focus:ring-1 focus:ring-pink-400 focus:border-pink-400"
-                                                >
-                                                <span class="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-pink-300">Rp</span>
                                             </div>
                                         </div>
                                         <div class="relative">

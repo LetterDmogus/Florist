@@ -128,13 +128,19 @@ class UpdateOrderAction
             }
             
             $unit = BouquetUnit::findOrFail($bouquetUnitId);
+            $unitPrice = isset($detailInput['unit_price']) && is_numeric($detailInput['unit_price'])
+                ? (float) $detailInput['unit_price']
+                : (isset($detailInput['price']) && is_numeric($detailInput['price']) ? (float) $detailInput['price'] : (float) $unit->price);
             $moneyBouquetRecord = $moneyBouquetInput;
-            $subtotal = (float) $unit->price + (float) ($moneyBouquetRecord ?? 0);
+            $subtotal = $unitPrice + (float) ($moneyBouquetRecord ?? 0);
             
             $quantity = 1;
         } else {
             $item = ItemUnit::findOrFail($inventoryItemId);
-            $subtotal = (float) $item->price * $quantity;
+            $unitPrice = isset($detailInput['unit_price']) && is_numeric($detailInput['unit_price'])
+                ? (float) $detailInput['unit_price']
+                : (isset($detailInput['price']) && is_numeric($detailInput['price']) ? (float) $detailInput['price'] : (float) $item->price);
+            $subtotal = $unitPrice * $quantity;
             $moneyBouquetRecord = null;
         }
 
@@ -142,6 +148,7 @@ class UpdateOrderAction
             'order_id' => $order->id,
             'item_type' => $itemType,
             'quantity' => $quantity,
+            'unit_price' => $unitPrice,
             'subtotal' => $subtotal,
             'bouquet_unit_id' => $bouquetUnitId,
             'inventory_item_id' => $inventoryItemId,
