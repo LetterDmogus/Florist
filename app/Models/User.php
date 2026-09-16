@@ -83,4 +83,15 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    /**
+     * Pastikan email selalu disimpan dan dikueri dalam bentuk lowercase & trimmed.
+     */
+    protected function email(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::make(
+            get: fn (?string $value): ?string => $value !== null ? strtolower(trim($value)) : null,
+            set: fn (?string $value): ?string => $value !== null ? strtolower(trim($value)) : null,
+        );
+    }
 }
