@@ -282,14 +282,14 @@ const handleSort = (key) => {
     }
     
     router.get(route('orders.status.index'), {
-        ...props.filters,
         order_status: activeOrderStatus.value || '',
         search: search.value || '',
         date_from: selectedDate.value || '',
-        date_to: useDateRange.value ? (selectedDateTo.value || '') : '',
+        date_to: selectedDateTo.value || '',
         date: selectedDate.value || '',
         sort_by: sortBy.value,
         sort_dir: sortDir.value,
+        show_hidden: showHidden.value ? 1 : 0,
     }, {
         preserveScroll: true,
         preserveState: true,
@@ -328,21 +328,29 @@ const applySearch = () => {
     });
 };
 
+const formatLocalDate = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const applyDateFilter = (from = null, to = null) => {
-    if (from !== null) {
-        selectedDate.value = from || '';
-    }
-    if (to !== null) {
-        selectedDateTo.value = to || '';
-    }
+    const fromVal = from !== null ? (from || '') : (selectedDate.value || '');
+    const toVal = to !== null ? (to || '') : (selectedDateTo.value || '');
+
+    selectedDate.value = fromVal;
+    selectedDateTo.value = toVal;
+
     router.get(route('orders.status.index'), {
         order_status: activeOrderStatus.value || '',
         search: search.value || '',
-        date_from: selectedDate.value || '',
-        date_to: selectedDateTo.value || '',
-        date: selectedDate.value || '',
+        date_from: fromVal,
+        date_to: toVal,
+        date: fromVal,
         sort_by: sortBy.value,
         sort_dir: sortDir.value,
+        show_hidden: showHidden.value ? 1 : 0,
     }, {
         preserveScroll: true,
         preserveState: true,
@@ -351,14 +359,14 @@ const applyDateFilter = (from = null, to = null) => {
 };
 
 const setDateToday = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = formatLocalDate(new Date());
     applyDateFilter(today, '');
 };
 
 const setDateTomorrow = () => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    const tomorrow = d.toISOString().split('T')[0];
+    const tomorrow = formatLocalDate(d);
     applyDateFilter(tomorrow, '');
 };
 
@@ -367,11 +375,14 @@ const resetFilter = () => {
     selectedDate.value = '';
     selectedDateTo.value = '';
     router.get(route('orders.status.index'), {
-        order_status: '',
+        order_status: activeOrderStatus.value || '',
         search: '',
         date_from: '',
         date_to: '',
         date: '',
+        sort_by: sortBy.value,
+        sort_dir: sortDir.value,
+        show_hidden: showHidden.value ? 1 : 0,
     }, {
         preserveScroll: true,
         preserveState: true,
@@ -538,6 +549,20 @@ watch(
         search.value = value ?? '';
     },
 );
+
+watch(
+    () => props.filters?.date_from || props.filters?.date,
+    (value) => {
+        selectedDate.value = value ?? '';
+    },
+);
+
+watch(
+    () => props.filters?.date_to,
+    (value) => {
+        selectedDateTo.value = value ?? '';
+    },
+);
 </script>
 
 <template>
@@ -666,7 +691,7 @@ watch(
                             <button
                                 type="button"
                                 class="px-2.5 py-1 text-xs font-semibold rounded-lg transition"
-                                :class="selectedDate === new Date().toISOString().split('T')[0] && !selectedDateTo ? 'bg-pink-600 text-white shadow-2xs' : 'text-pink-700 hover:bg-pink-100/60'"
+                                :class="selectedDate === formatLocalDate(new Date()) && !selectedDateTo ? 'bg-pink-600 text-white shadow-2xs' : 'text-pink-700 hover:bg-pink-100/60'"
                                 @click="setDateToday"
                             >
                                 Hari Ini
@@ -674,7 +699,7 @@ watch(
                             <button
                                 type="button"
                                 class="px-2.5 py-1 text-xs font-semibold rounded-lg transition"
-                                :class="selectedDate === new Date(Date.now() + 86400000).toISOString().split('T')[0] && !selectedDateTo ? 'bg-pink-600 text-white shadow-2xs' : 'text-pink-700 hover:bg-pink-100/60'"
+                                :class="selectedDate === formatLocalDate(new Date(Date.now() + 86400000)) && !selectedDateTo ? 'bg-pink-600 text-white shadow-2xs' : 'text-pink-700 hover:bg-pink-100/60'"
                                 @click="setDateTomorrow"
                             >
                                 Besok
