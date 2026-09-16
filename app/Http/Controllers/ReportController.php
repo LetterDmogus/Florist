@@ -249,6 +249,7 @@ class ReportController extends Controller
             'dp' => $totalDp,
             'money' => round($salesRows->sum('money'), 2),
             'fee' => round($salesRows->sum('fee'), 2),
+            'discount' => round($salesRows->sum('discount'), 2),
             'gosend' => round($salesRows->sum('gosend'), 2),
             'total' => round($salesRows->sum('total'), 2),
             'unpaid_total' => $totalReceivables,
@@ -335,67 +336,93 @@ class ReportController extends Controller
 
     private function buildSalesRows(CarbonImmutable $start, CarbonImmutable $end): Collection
     {
-        $details = OrderDetail::query()
+        $orders = Order::query()
             ->with([
-                'order:id,shipping_date,shipping_time,shipping_fee,payment_status,down_payment,total,order_status,deleted_at',
-                'bouquetUnit:id,name,type_id',
-                'bouquetUnit.type:id,name',
-                'inventoryItem:id,name',
+                'customer:id,name,phone',
+                'delivery',
+                'orderDetails.bouquetUnit.type:id,name',
+                'orderDetails.inventoryItem:id,name',
             ])
-            ->whereHas('order', fn ($query) => $query
-                ->whereNull('deleted_at')
-                ->whereBetween('shipping_date', [$start->toDateString(), $end->toDateString()]))
-            ->get()
-            ->sortBy(fn (OrderDetail $detail) => sprintf(
-                '%s|%s|%08d',
-                $detail->order?->shipping_date?->format('Y-m-d') ?? '',
-                (string) $detail->order?->shipping_time,
-                $detail->id
-            ))
-            ->values();
+            ->whereNull('deleted_at')
+            ->whereBetween('shipping_date', [$start->toDateString(), $end->toDateString()])
+            ->orderBy('shipping_date')
+            ->orderBy('shipping_time')
+            ->orderBy('id')
+            ->get();
 
-        $processedOrders = [];
-        $orderTotals = [];
+        return $orders->values()->map(function (Order $order, int $index): array {
+            $money = 0.0;
+            $itemsSummary = [];
+            $orderDetails = [];
 
-        // Hitung total subtotal per order_id untuk pembagian proporsional jika diperlukan,
-        // atau tampilkan sisa piutang pada baris pertama setiap order
-        return $details->map(function (OrderDetail $detail, int $index) use (&$processedOrders): array {
-            $model = $this->resolveModelLabel($detail);
-            $isMoneyBouquet = $this->isMoneyBouquet($detail, $model);
-            $money = $isMoneyBouquet ? (float) ($detail->money_bouquet ?? 0) : 0.0;
-            $total = (float) $detail->subtotal;
-            $fee = max(0, $total - $money);
+            foreach ($order->orderDetails as $detail) {
+                $model = $this->resolveModelLabel($detail);
+                $isMoneyBouquet = $this->isMoneyBouquet($detail, $model);
+                $detailMoney = $isMoneyBouquet ? (float) ($detail->money_bouquet ?? 0) : 0.0;
+                $money += $detailMoney;
 
-            $gosend = 0.0;
+                $itemsSummary[] = $detail->quantity > 1
+                    ? "{$model} (x{$detail->quantity})"
+                    : $model;
+
+                $orderDetails[] = [
+                    'id' => $detail->id,
+                    'item_name' => $model,
+                    'item_type' => $detail->item_type,
+                    'quantity' => (int) $detail->quantity,
+                    'unit_price' => (float) ($detail->unit_price ?? 0),
+                    'subtotal' => (float) ($detail->subtotal ?? 0),
+                    'money_bouquet' => (float) ($detail->money_bouquet ?? 0),
+                    'sender_name' => $detail->sender_name,
+                    'greeting_card' => $detail->greeting_card,
+                ];
+            }
+
+            $modelString = empty($itemsSummary)
+                ? 'Order #' . $order->id
+                : implode(', ', $itemsSummary);
+
+            $gosend = (float) ($order->shipping_fee ?? 0);
+            $discount = (float) ($order->discount ?? 0);
+            $dpAmount = (float) ($order->down_payment ?? 0);
+            $orderTotal = (float) ($order->total ?? 0);
+
+            // Fee dihitung sebagai subtotal order dikurangi money bouquet
+            // Dimana orderTotal = (sum(subtotals) - discount) + gosend
+            // Jadi items_subtotal = orderTotal - gosend + discount
+            // Fee = items_subtotal - money
+            $itemsSubtotal = max(0, $orderTotal - $gosend + $discount);
+            $fee = max(0, $itemsSubtotal - $money);
+
             $unpaidAmount = 0.0;
-            $dpAmount = 0.0;
-            $isFirstItemInOrder = $detail->order_id && ! in_array($detail->order_id, $processedOrders, true);
-
-            if ($isFirstItemInOrder) {
-                $gosend = (float) ($detail->order?->shipping_fee ?? 0);
-                $processedOrders[] = $detail->order_id;
-                $dpAmount = (float) ($detail->order?->down_payment ?? 0);
-
-                $orderPaymentStatus = (string) ($detail->order?->payment_status ?? '');
-                if ($orderPaymentStatus !== 'paid' && $detail->order?->order_status !== 'canceled') {
-                    $orderTotal = (float) ($detail->order?->total ?? 0);
-                    $unpaidAmount = max(0, $orderTotal - $dpAmount);
-                }
+            if ($order->payment_status !== 'paid' && $order->order_status !== 'canceled') {
+                $unpaidAmount = max(0, $orderTotal - $dpAmount);
             }
 
             return [
                 'no' => $index + 1,
-                'date' => $detail->order?->shipping_date?->format('Y-m-d'),
-                'model' => $model,
+                'order_id' => $order->id,
+                'date' => $order->shipping_date?->format('Y-m-d'),
+                'time' => $order->shipping_time ? substr((string) $order->shipping_time, 0, 5) : null,
+                'customer_name' => $order->customer?->name ?? '-',
+                'customer_phone' => $order->customer?->phone ?? '-',
+                'model' => $modelString,
                 'money' => round($money, 2),
                 'fee' => round($fee, 2),
+                'discount' => round($discount, 2),
                 'gosend' => round($gosend, 2),
-                'total' => round($total + $gosend, 2),
-                'order_id' => $detail->order_id,
-                'payment_status' => (string) ($detail->order?->payment_status ?? ''),
-                'is_unpaid' => in_array($detail->order?->payment_status, ['dp', 'unpaid'], true) && $detail->order?->order_status !== 'canceled',
+                'total' => round($orderTotal, 2),
+                'payment_status' => (string) ($order->payment_status ?? ''),
+                'order_status' => (string) ($order->order_status ?? ''),
+                'is_unpaid' => in_array($order->payment_status, ['dp', 'unpaid'], true) && $order->order_status !== 'canceled',
+                'is_dp' => $order->payment_status === 'dp',
                 'dp' => round($dpAmount, 2),
                 'unpaid_amount' => round($unpaidAmount, 2),
+                'shipping_type' => $order->shipping_type,
+                'delivery_address' => $order->delivery?->recipient_address,
+                'delivery_recipient' => $order->delivery?->recipient_name,
+                'delivery_phone' => $order->delivery?->recipient_phone,
+                'items' => $orderDetails,
             ];
         });
     }

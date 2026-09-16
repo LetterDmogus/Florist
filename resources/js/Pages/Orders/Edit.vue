@@ -6,7 +6,7 @@ import Modal from '@/Components/Modal.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, ref, watch, onMounted } from 'vue';
-import { ShoppingBag, ShoppingCart, Trash2, WandSparkles, Package, User, Truck, MapPin, Search, XCircle, MessageSquare, UserPlus, CreditCard, Eye, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { ShoppingBag, ShoppingCart, Trash2, WandSparkles, Package, User, Truck, MapPin, Search, XCircle, MessageSquare, UserPlus, CreditCard, Eye, ChevronLeft, ChevronRight, Tag } from 'lucide-vue-next';
 
 const props = defineProps({
     order: {
@@ -95,6 +95,7 @@ const form = useForm({
     shipping_time: props.order.shipping_time?.slice(0, 5),
     shipping_type: props.order.shipping_type,
     shipping_fee: props.order.shipping_fee,
+    discount: props.order.discount ?? 0,
     delivery_mode: props.order.delivery ? 'existing' : 'new',
     delivery_id: props.order.delivery?.id || '',
     delivery_recipient_name: props.order.delivery?.recipient_name || '',
@@ -181,7 +182,12 @@ const shippingFeeAmount = computed(() => {
     return Number.isFinite(value) && value > 0 ? value : 0;
 });
 
-const orderGrandTotal = computed(() => cartTotal.value + shippingFeeAmount.value);
+const discountAmount = computed(() => {
+    const value = Number(form.discount ?? 0);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+});
+
+const orderGrandTotal = computed(() => Math.max(0, cartTotal.value + shippingFeeAmount.value - discountAmount.value));
 
 const lineTotal = (item) => {
     const price = Number(item.unit_price || 0);
@@ -832,6 +838,16 @@ watch(deliverySearch, debounce(() => fetchDeliveryOptions(), 300));
                                     <input v-model="form.shipping_fee" type="number" class="w-full pl-8 py-2 rounded-xl border-2 border-pink-100 text-right text-sm font-bold focus:ring-pink-300 transition-all shadow-sm">
                                 </div>
                             </div>
+                            <div class="flex items-center justify-between gap-4">
+                                <div class="flex items-center gap-2">
+                                    <Tag class="w-4 h-4 text-rose-600" />
+                                    <label class="text-sm font-bold text-rose-700">Diskon (Manual)</label>
+                                </div>
+                                <div class="relative w-36">
+                                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-rose-400 font-bold">Rp</span>
+                                    <input v-model="form.discount" type="number" min="0" placeholder="0" class="w-full pl-8 py-2 rounded-xl border-2 border-rose-200 text-right text-sm font-bold text-rose-700 focus:ring-rose-300 transition-all shadow-sm">
+                                </div>
+                            </div>
                             <div class="space-y-1">
                                 <div class="flex items-center justify-between gap-4">
                                     <div class="flex items-center gap-2">
@@ -859,6 +875,10 @@ watch(deliverySearch, debounce(() => fetchDeliveryOptions(), 300));
                                 <div class="flex justify-between text-pink-200">
                                     <span class="text-sm">Biaya Pengiriman</span>
                                     <span class="font-bold text-white">+ {{ formatCurrency(shippingFeeAmount) }}</span>
+                                </div>
+                                <div v-if="discountAmount > 0" class="flex justify-between text-rose-300 font-semibold">
+                                    <span class="text-sm">Diskon</span>
+                                    <span>- {{ formatCurrency(discountAmount) }}</span>
                                 </div>
                                 <div class="border-t border-pink-800 pt-3 flex justify-between items-end">
                                     <div>

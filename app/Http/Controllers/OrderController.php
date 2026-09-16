@@ -92,14 +92,19 @@ class OrderController extends Controller
 
     public function statusIndex(Request $request): Response
     {
-        $perPage = $this->resolvePerPage($request);
+        $perPage = $request->has('per_page')
+            ? $this->resolvePerPage($request)
+            : 200; // Default lebih besar agar semua order pada tanggal terpilih tampil di papan status/kanban tanpa terpotong
         $orderStatusFilter = $this->normalizeOrderStatusFilter((string) $request->string('order_status')->toString());
         $search = trim((string) $request->string('search')->toString());
+        $dateFrom = trim((string) $request->string('date_from', $request->string('date')->toString())->toString());
+        $dateTo = trim((string) $request->string('date_to')->toString());
+
         [$sortBy, $sortDir] = $this->resolveSort(
             $request,
             ['id', 'customer_id', 'total', 'shipping_fee', 'shipping_date', 'shipping_time', 'shipping_type', 'payment_status', 'order_status', 'created_at', 'updated_at'],
-            'created_at',
-            'desc',
+            'shipping_time',
+            'asc',
         );
 
         $showHidden = $request->boolean('show_hidden', false);
@@ -112,6 +117,9 @@ class OrderController extends Controller
             'orderDetails.inventoryItem',
         ])
             ->when(! $showHidden, fn ($q) => $q->where('is_hidden', false))
+            ->when($dateFrom !== '' && $dateTo === '', fn ($q) => $q->whereDate('shipping_date', $dateFrom))
+            ->when($dateFrom !== '' && $dateTo !== '', fn ($q) => $q->whereDate('shipping_date', '>=', $dateFrom)->whereDate('shipping_date', '<=', $dateTo))
+            ->when($dateFrom === '' && $dateTo !== '', fn ($q) => $q->whereDate('shipping_date', '<=', $dateTo))
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($builder) use ($search): void {
                     if (is_numeric($search)) {
@@ -135,12 +143,15 @@ class OrderController extends Controller
             'filters' => [
                 'order_status' => $orderStatusFilter,
                 'search' => $search,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'date' => $dateFrom,
                 'sort_by' => $sortBy,
                 'sort_dir' => $sortDir,
                 'per_page' => $perPage,
                 'show_hidden' => $showHidden,
             ],
-            'orderStatusSummary' => $this->buildOrderStatusSummary($showHidden),
+            'orderStatusSummary' => $this->buildOrderStatusSummary($showHidden, $dateFrom, $dateTo),
             'canManageOrderStatus' => (bool) $request->user()?->can('orders.status.update'),
             'canDeleteOrder' => (bool) $request->user()?->can('orders.delete'),
         ]);
@@ -764,12 +775,15 @@ class OrderController extends Controller
         return $status;
     }
 
-    private function buildOrderStatusSummary(bool $showHidden = false): array
+    private function buildOrderStatusSummary(bool $showHidden = false, string $dateFrom = '', string $dateTo = ''): array
     {
         $statusCounts = Order::query()
             ->select('order_status', DB::raw('COUNT(*) as total'))
             ->whereIn('order_status', Order::ORDER_STATUSES)
             ->when(! $showHidden, fn ($q) => $q->where('is_hidden', false))
+            ->when($dateFrom !== '' && $dateTo === '', fn ($q) => $q->whereDate('shipping_date', $dateFrom))
+            ->when($dateFrom !== '' && $dateTo !== '', fn ($q) => $q->whereDate('shipping_date', '>=', $dateFrom)->whereDate('shipping_date', '<=', $dateTo))
+            ->when($dateFrom === '' && $dateTo !== '', fn ($q) => $q->whereDate('shipping_date', '<=', $dateTo))
             ->groupBy('order_status')
             ->pluck('total', 'order_status');
 

@@ -258,6 +258,10 @@ const exportAsPNG = async () => {
                     <span>Ongkos Kirim:</span>
                     <span class="font-semibold text-gray-900">+ {{ formatCurrency(order.shipping_fee) }}</span>
                 </div>
+                <div v-if="Number(order.discount || 0) > 0" class="flex justify-between text-rose-600">
+                    <span>Diskon:</span>
+                    <span class="font-semibold">- {{ formatCurrency(order.discount) }}</span>
+                </div>
                 
                 <div class="flex justify-between text-xs font-black text-gray-950 border-t border-gray-400 pt-1 mt-1">
                     <span>TOTAL TAGIHAN:</span>
@@ -468,6 +472,10 @@ const exportAsPNG = async () => {
                     <div v-if="Number(order.shipping_fee || 0) > 0" class="flex justify-between text-gray-600">
                         <span>Biaya Ongkos Kirim:</span>
                         <span class="font-semibold font-mono text-gray-900">+ {{ formatCurrency(order.shipping_fee) }}</span>
+                    </div>
+                    <div v-if="Number(order.discount || 0) > 0" class="flex justify-between text-rose-600">
+                        <span>Potongan Diskon:</span>
+                        <span class="font-semibold font-mono">- {{ formatCurrency(order.discount) }}</span>
                     </div>
                     <div class="flex justify-between text-sm font-black text-gray-950 border-t-2 border-gray-800 pt-2 mt-2">
                         <span>TOTAL TAGIHAN:</span>

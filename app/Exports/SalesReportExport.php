@@ -65,10 +65,11 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         $appendRow(["LAPORAN PENJUALAN - {$monthLabel} {$this->year}"]);
         $appendRow(['']); // Row 3 (Pemisah kosong)
 
-        // 2. SUMMARY PENJUALAN (Row 4 s/d 10)
+        // 2. SUMMARY PENJUALAN (Row 4 s/d 11)
         $this->summaryStartRow = $appendRow(['', 'SUMMARY PENJUALAN']); // Row 4
         $appendRow(['', 'Money', (float) ($this->salesSummary['money'] ?? 0)]);
         $appendRow(['', 'Fee', (float) ($this->salesSummary['fee'] ?? 0)]);
+        $appendRow(['', 'Diskon', (float) ($this->salesSummary['discount'] ?? 0)]);
         $appendRow(['', 'Gosend', (float) ($this->salesSummary['gosend'] ?? 0)]);
         $appendRow(['', 'TOTAL PENJUALAN', (float) ($this->salesSummary['total'] ?? 0)]);
         $appendRow(['', 'TOTAL DP DITERIMA', (float) ($this->salesSummary['dp'] ?? 0)]);
@@ -77,12 +78,12 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         $appendRow(['']); // Pemisah kosong
 
         // 3. TABEL DATA TRANSAKSI
-        $this->tableHeaderRow = $appendRow(['No', 'Tanggal', 'Model Bouquet / Item', 'Status', 'DP Diterima', 'Belum Dibayar', 'Money', 'Fee', 'Gosend', 'Total']);
+        $this->tableHeaderRow = $appendRow(['No', 'Tanggal', 'Model Bouquet / Item', 'Status', 'DP Diterima', 'Belum Dibayar', 'Money', 'Fee', 'Diskon', 'Gosend', 'Total']);
         $this->dataStartRow = $this->tableHeaderRow + 1;
         $this->unpaidDataRows = [];
 
         if (empty($this->salesRows)) {
-            $appendRow(['-', '-', 'Tidak ada data penjualan pada periode ini', '-', 0, 0, 0, 0, 0, 0]);
+            $appendRow(['-', '-', 'Tidak ada data penjualan pada periode ini', '-', 0, 0, 0, 0, 0, 0, 0]);
         } else {
             foreach ($this->salesRows as $item) {
                 $isUnpaid = !empty($item['is_unpaid']) || in_array($item['payment_status'] ?? '', ['dp', 'unpaid'], true);
@@ -101,6 +102,7 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
                     (float) ($item['unpaid_amount'] ?? 0),
                     (float) ($item['money'] ?? 0),
                     (float) ($item['fee'] ?? 0),
+                    (float) ($item['discount'] ?? 0),
                     (float) ($item['gosend'] ?? 0),
                     (float) ($item['total'] ?? 0),
                 ]);
@@ -122,6 +124,7 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
             (float) ($this->salesSummary['unpaid_total'] ?? 0),
             (float) ($this->salesSummary['money'] ?? 0),
             (float) ($this->salesSummary['fee'] ?? 0),
+            (float) ($this->salesSummary['discount'] ?? 0),
             (float) ($this->salesSummary['gosend'] ?? 0),
             (float) ($this->salesSummary['total'] ?? 0),
         ]);
@@ -155,13 +158,13 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
     public function styles(Worksheet $sheet): array
     {
         // 1. Judul Utama (Row 1-2)
-        $sheet->mergeCells('A1:I1');
-        $sheet->mergeCells('A2:I2');
-        $sheet->getStyle('A1:I2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle('A1:I1')->getFont()->setBold(true)->setSize(16)->getColor()->setRGB('9D174D');
-        $sheet->getStyle('A2:I2')->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('374151');
+        $sheet->mergeCells('A1:K1');
+        $sheet->mergeCells('A2:K2');
+        $sheet->getStyle('A1:K2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A1:K1')->getFont()->setBold(true)->setSize(16)->getColor()->setRGB('9D174D');
+        $sheet->getStyle('A2:K2')->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('374151');
 
-        // 2. Kotak Summary Penjualan (Row 4 s/d 9)
+        // 2. Kotak Summary Penjualan (Row 4 s/d 11)
         $sheet->getStyle("B{$this->summaryStartRow}")->getFont()->setBold(true)->getColor()->setRGB('9D174D');
         $sheet->getStyle("B" . ($this->summaryEndRow - 1) . ":C" . ($this->summaryEndRow - 1))->getFont()->setBold(true);
         $sheet->getStyle("B{$this->summaryEndRow}:C{$this->summaryEndRow}")->getFont()->setBold(true)->getColor()->setRGB('9F1239');
@@ -169,7 +172,7 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         $sheet->getStyle("C" . ($this->summaryStartRow + 1) . ":C{$this->summaryEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
         // 3. Header Tabel Data (Row tableHeaderRow)
-        $headerRange = "A{$this->tableHeaderRow}:J{$this->tableHeaderRow}";
+        $headerRange = "A{$this->tableHeaderRow}:K{$this->tableHeaderRow}";
         $sheet->getStyle($headerRange)->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'DB2777']],
@@ -180,7 +183,7 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         for ($r = $this->dataStartRow; $r <= $this->dataEndRow; $r++) {
             // Zebra striping untuk baris genap
             if ($r % 2 === 0) {
-                $sheet->getStyle("A{$r}:J{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFF1F7');
+                $sheet->getStyle("A{$r}:K{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFF1F7');
             }
 
             // Alignment standar kolom
@@ -191,7 +194,7 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
 
         // Highlight merah lembut untuk baris yang belum lunas / DP
         foreach ($this->unpaidDataRows as $r) {
-            $sheet->getStyle("A{$r}:J{$r}")->applyFromArray([
+            $sheet->getStyle("A{$r}:K{$r}")->applyFromArray([
                 'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFE4E6']], // Soft Rose
                 'font' => ['color' => ['rgb' => '9F1239'], 'bold' => true],
             ]);
@@ -199,16 +202,16 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
 
         // 5. Baris Total Tabel Data
         $sheet->mergeCells("A{$this->tableTotalRow}:D{$this->tableTotalRow}");
-        $sheet->getStyle("A{$this->tableTotalRow}:J{$this->tableTotalRow}")->applyFromArray([
+        $sheet->getStyle("A{$this->tableTotalRow}:K{$this->tableTotalRow}")->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => '831843']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FCE7F3']],
         ]);
         $sheet->getStyle("A{$this->tableTotalRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
         // Border seluruh tabel data (Header s/d Total)
-        $tableRange = "A{$this->tableHeaderRow}:J{$this->tableTotalRow}";
+        $tableRange = "A{$this->tableHeaderRow}:K{$this->tableTotalRow}";
         $sheet->getStyle($tableRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('F472B6');
-        $sheet->getStyle("A{$this->tableTotalRow}:J{$this->tableTotalRow}")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setRGB('DB2777');
+        $sheet->getStyle("A{$this->tableTotalRow}:K{$this->tableTotalRow}")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setRGB('DB2777');
 
         // 6. Ringkasan Laba
         $sheet->getStyle("B{$this->profitTitleRow}")->getFont()->setBold(true)->setSize(11)->getColor()->setRGB('9D174D');
@@ -234,6 +237,7 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
             'H' => '#,##0',
             'I' => '#,##0',
             'J' => '#,##0',
+            'K' => '#,##0',
         ];
     }
 
@@ -248,8 +252,9 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
             'F' => 16,  // Belum Dibayar
             'G' => 14,  // Money
             'H' => 14,  // Fee
-            'I' => 14,  // Gosend
-            'J' => 16,  // Total
+            'I' => 14,  // Diskon
+            'J' => 14,  // Gosend
+            'K' => 16,  // Total
         ];
     }
 

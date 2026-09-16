@@ -44,7 +44,8 @@ class CreateOrderAction
                 // Hitung total dari detail
                 $itemsTotal = collect($resolvedDetails)->sum(fn (array $detail): float => $this->calculateSubtotal($detail));
                 $shippingFee = $this->resolveShippingFee($validated);
-                $total = $itemsTotal + $shippingFee;
+                $discount = isset($validated['discount']) ? max(0, (float) $validated['discount']) : 0.0;
+                $total = max(0, ($itemsTotal + $shippingFee) - $discount);
                 $downPayment = isset($validated['down_payment']) ? (float) $validated['down_payment'] : 0.0;
 
                 if ($downPayment > $itemsTotal) {
@@ -68,6 +69,7 @@ class CreateOrderAction
                     'shipping_time' => $validated['shipping_time'],
                     'shipping_type' => $validated['shipping_type'],
                     'shipping_fee' => $shippingFee,
+                    'discount' => $discount,
                     'down_payment' => $downPayment > 0 ? $downPayment : null,
                     'payment_status' => $paymentStatus,
                     'order_status' => 'pending',
@@ -143,6 +145,7 @@ class CreateOrderAction
                         'details_count' => count($resolvedDetails),
                         'items_total' => (float) $itemsTotal,
                         'shipping_fee' => $shippingFee,
+                        'discount' => $discount,
                         'total' => (float) $total,
                         'down_payment' => $downPayment,
                         'payment_status' => $paymentStatus,

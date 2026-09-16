@@ -125,10 +125,14 @@ const remainingPayment = computed(() => {
                     </div>
                 </div>
 
-                <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                <div class="mt-3 grid gap-3 sm:grid-cols-3" :class="Number(order.discount || 0) > 0 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'">
                     <div class="rounded-2xl bg-pink-50 p-3">
                         <p class="text-xs uppercase tracking-wide text-pink-600">Ongkir</p>
                         <p class="mt-1 text-lg font-bold text-pink-950">{{ formatCurrency(order.shipping_fee ?? 0) }}</p>
+                    </div>
+                    <div v-if="Number(order.discount || 0) > 0" class="rounded-2xl bg-rose-50 p-3">
+                        <p class="text-xs uppercase tracking-wide text-rose-600">Diskon</p>
+                        <p class="mt-1 text-lg font-bold text-rose-700">- {{ formatCurrency(order.discount) }}</p>
                     </div>
                     <div class="rounded-2xl bg-pink-50 p-3">
                         <p class="text-xs uppercase tracking-wide text-pink-600">Down Payment</p>

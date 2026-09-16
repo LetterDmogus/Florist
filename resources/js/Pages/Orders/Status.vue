@@ -59,8 +59,8 @@ const search = ref(props.filters?.search ?? '');
 const detailOrderId = ref(null);
 const draggingOrderId = ref(null);
 const dragOverStatus = ref(null);
-const hideCompleted = ref(false);
-const hideCanceled = ref(false);
+const selectedDate = ref(props.filters?.date_from || props.filters?.date || '');
+const selectedDateTo = ref(props.filters?.date_to ?? '');
 const showHidden = ref(Boolean(props.filters?.show_hidden));
 
 // LocalStorage key for persisting minimized orders
@@ -126,6 +126,9 @@ const toggleShowHidden = () => {
         ...props.filters,
         order_status: activeOrderStatus.value || '',
         search: search.value || '',
+        date_from: selectedDate.value || '',
+        date_to: selectedDateTo.value || '',
+        date: selectedDate.value || '',
         sort_by: sortBy.value,
         sort_dir: sortDir.value,
         show_hidden: showHidden.value ? 1 : 0,
@@ -215,21 +218,9 @@ const ordersList = computed(() => {
     return props.orders?.data ?? [];
 });
 
-const visibleColumns = computed(() => {
-    return columns.filter((col) => {
-        if (col.key === 'completed' && hideCompleted.value) return false;
-        if (col.key === 'canceled' && hideCanceled.value) return false;
-        return true;
-    });
-});
+const visibleColumns = computed(() => columns);
 
-const filteredOrdersList = computed(() => {
-    return ordersList.value.filter((order) => {
-        if (order.order_status === 'completed' && hideCompleted.value) return false;
-        if (order.order_status === 'canceled' && hideCanceled.value) return false;
-        return true;
-    });
-});
+const filteredOrdersList = computed(() => ordersList.value);
 
 const ordersByStatus = computed(() => {
     const map = {
@@ -294,6 +285,9 @@ const handleSort = (key) => {
         ...props.filters,
         order_status: activeOrderStatus.value || '',
         search: search.value || '',
+        date_from: selectedDate.value || '',
+        date_to: useDateRange.value ? (selectedDateTo.value || '') : '',
+        date: selectedDate.value || '',
         sort_by: sortBy.value,
         sort_dir: sortDir.value,
     }, {
@@ -306,6 +300,9 @@ const filterOrdersByStatus = (status) => {
     router.get(route('orders.status.index'), {
         order_status: status || '',
         search: search.value || '',
+        date_from: selectedDate.value || '',
+        date_to: selectedDateTo.value || '',
+        date: selectedDate.value || '',
         sort_by: sortBy.value,
         sort_dir: sortDir.value,
     }, {
@@ -319,6 +316,9 @@ const applySearch = () => {
     router.get(route('orders.status.index'), {
         order_status: activeOrderStatus.value || '',
         search: search.value || '',
+        date_from: selectedDate.value || '',
+        date_to: selectedDateTo.value || '',
+        date: selectedDate.value || '',
         sort_by: sortBy.value,
         sort_dir: sortDir.value,
     }, {
@@ -328,10 +328,50 @@ const applySearch = () => {
     });
 };
 
+const applyDateFilter = (from = null, to = null) => {
+    if (from !== null) {
+        selectedDate.value = from || '';
+    }
+    if (to !== null) {
+        selectedDateTo.value = to || '';
+    }
+    router.get(route('orders.status.index'), {
+        order_status: activeOrderStatus.value || '',
+        search: search.value || '',
+        date_from: selectedDate.value || '',
+        date_to: selectedDateTo.value || '',
+        date: selectedDate.value || '',
+        sort_by: sortBy.value,
+        sort_dir: sortDir.value,
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        replace: true,
+    });
+};
+
+const setDateToday = () => {
+    const today = new Date().toISOString().split('T')[0];
+    applyDateFilter(today, '');
+};
+
+const setDateTomorrow = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const tomorrow = d.toISOString().split('T')[0];
+    applyDateFilter(tomorrow, '');
+};
+
 const resetFilter = () => {
     search.value = '';
+    selectedDate.value = '';
+    selectedDateTo.value = '';
     router.get(route('orders.status.index'), {
         order_status: '',
+        search: '',
+        date_from: '',
+        date_to: '',
+        date: '',
     }, {
         preserveScroll: true,
         preserveState: true,
@@ -344,6 +384,9 @@ const goToPage = (url) => {
         router.get(url, {
             order_status: activeOrderStatus.value || '',
             search: search.value || '',
+            date_from: selectedDate.value || '',
+            date_to: selectedDateTo.value || '',
+            date: selectedDate.value || '',
             sort_by: sortBy.value,
             sort_dir: sortDir.value,
         }, {
@@ -564,8 +607,82 @@ watch(
                     </button>
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <!-- Hide Completed & Canceled Toggles + Minimize All -->
+                    <!-- Date Filter (Dari Tanggal & Sampai Tanggal) & Quick Presets -->
+                    <div class="flex flex-wrap items-center gap-2 bg-pink-50/60 p-1.5 rounded-xl border border-pink-200/80">
+                        <!-- Dari Tanggal Input -->
+                        <div class="flex items-center gap-1.5 px-2 py-1 bg-white rounded-lg border border-pink-200 shadow-2xs">
+                            <Calendar class="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                            <span class="text-[10px] text-pink-600 font-bold whitespace-nowrap">Dari:</span>
+                            <input
+                                v-model="selectedDate"
+                                type="date"
+                                class="border-0 p-0 text-xs font-bold text-pink-950 focus:ring-0 cursor-pointer bg-transparent"
+                                title="Tanggal awal"
+                                @change="applyDateFilter(selectedDate, selectedDateTo)"
+                            >
+                            <button
+                                v-if="selectedDate"
+                                type="button"
+                                class="text-pink-400 hover:text-pink-700 ml-0.5"
+                                title="Kosongkan tanggal awal"
+                                @click="applyDateFilter('', selectedDateTo)"
+                            >
+                                <XCircle class="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+
+                        <!-- Sampai Tanggal Input (Langsung tampil, opsional diisi) -->
+                        <div class="flex items-center gap-1.5 px-2 py-1 bg-white rounded-lg border border-pink-200 shadow-2xs">
+                            <span class="text-[10px] text-pink-600 font-bold whitespace-nowrap">Sampai:</span>
+                            <input
+                                v-model="selectedDateTo"
+                                type="date"
+                                class="border-0 p-0 text-xs font-bold text-pink-950 focus:ring-0 cursor-pointer bg-transparent"
+                                title="Sampai tanggal (opsional)"
+                                :min="selectedDate || undefined"
+                                @change="applyDateFilter(selectedDate, selectedDateTo)"
+                            >
+                            <button
+                                v-if="selectedDateTo"
+                                type="button"
+                                class="text-pink-400 hover:text-pink-700 ml-0.5"
+                                title="Kosongkan tanggal akhir"
+                                @click="applyDateFilter(selectedDate, '')"
+                            >
+                                <XCircle class="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+
+                        <!-- Quick Presets -->
+                        <div class="flex items-center gap-1 border-l border-pink-200/80 pl-1.5">
+                            <button
+                                type="button"
+                                class="px-2.5 py-1 text-xs font-semibold rounded-lg transition"
+                                :class="!selectedDate && !selectedDateTo ? 'bg-pink-600 text-white shadow-2xs' : 'text-pink-700 hover:bg-pink-100/60'"
+                                @click="resetFilter"
+                            >
+                                Semua
+                            </button>
+                            <button
+                                type="button"
+                                class="px-2.5 py-1 text-xs font-semibold rounded-lg transition"
+                                :class="selectedDate === new Date().toISOString().split('T')[0] && !selectedDateTo ? 'bg-pink-600 text-white shadow-2xs' : 'text-pink-700 hover:bg-pink-100/60'"
+                                @click="setDateToday"
+                            >
+                                Hari Ini
+                            </button>
+                            <button
+                                type="button"
+                                class="px-2.5 py-1 text-xs font-semibold rounded-lg transition"
+                                :class="selectedDate === new Date(Date.now() + 86400000).toISOString().split('T')[0] && !selectedDateTo ? 'bg-pink-600 text-white shadow-2xs' : 'text-pink-700 hover:bg-pink-100/60'"
+                                @click="setDateTomorrow"
+                            >
+                                Besok
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Extra Actions (Minimize All & Show Hidden) -->
                     <div class="flex items-center gap-1.5 bg-pink-50/60 p-1 rounded-xl border border-pink-200/80">
                         <button
                             type="button"
@@ -575,27 +692,7 @@ watch(
                             @click="toggleMinimizeAll"
                         >
                             <component :is="areAllMinimized ? ChevronDown : ChevronUp" class="w-3.5 h-3.5" />
-                            <span>{{ areAllMinimized ? 'Buka Semua' : 'Kecilkan Semua' }}</span>
-                        </button>
-                        <button
-                            type="button"
-                            class="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
-                            :class="hideCompleted ? 'bg-emerald-600 text-white shadow-2xs' : 'text-emerald-800 hover:bg-emerald-100/60'"
-                            :title="hideCompleted ? 'Tampilkan kolom Selesai' : 'Sembunyikan kolom Selesai'"
-                            @click="hideCompleted = !hideCompleted"
-                        >
-                            <component :is="hideCompleted ? EyeOff : Eye" class="w-3.5 h-3.5" />
-                            <span>{{ hideCompleted ? 'Selesai: Sembunyi' : 'Selesai: Tampil' }}</span>
-                        </button>
-                        <button
-                            type="button"
-                            class="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
-                            :class="hideCanceled ? 'bg-rose-600 text-white shadow-2xs' : 'text-rose-800 hover:bg-rose-100/60'"
-                            :title="hideCanceled ? 'Tampilkan kolom Dibatalkan' : 'Sembunyikan kolom Dibatalkan'"
-                            @click="hideCanceled = !hideCanceled"
-                        >
-                            <component :is="hideCanceled ? EyeOff : Eye" class="w-3.5 h-3.5" />
-                            <span>{{ hideCanceled ? 'Batal: Sembunyi' : 'Batal: Tampil' }}</span>
+                            <span>{{ areAllMinimized ? 'Buka' : 'Kecilkan' }}</span>
                         </button>
                         <button
                             type="button"
@@ -605,14 +702,13 @@ watch(
                             @click="toggleShowHidden"
                         >
                             <component :is="showHidden ? Eye : EyeOff" class="w-3.5 h-3.5" />
-                            <span>{{ showHidden ? 'Item Tersembunyi: Tampil' : 'Lihat Item Tersembunyi' }}</span>
+                            <span>{{ showHidden ? 'Hide: Tampil' : 'Lihat Hide' }}</span>
                         </button>
                     </div>
 
                     <div class="text-xs text-pink-800 font-medium whitespace-nowrap">
                         Total: <span class="font-bold text-pink-950">{{ filteredOrdersList.length }}</span> order
                     </div>
-                </div>
             </div>
 
             <!-- KANBAN BOARD VIEW -->
@@ -1101,7 +1197,7 @@ watch(
                     </div>
                 </div>
 
-                <div class="grid gap-3 sm:grid-cols-3">
+                <div class="grid gap-3 sm:grid-cols-3" :class="Number(selectedOrder.discount || 0) > 0 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'">
                     <div class="rounded-xl bg-pink-50 p-3">
                         <p class="text-[11px] font-semibold uppercase tracking-wide text-pink-600">Total</p>
                         <p class="mt-1 text-sm font-bold text-pink-950">{{ formatCurrency(selectedOrder.total) }}</p>
@@ -1109,6 +1205,10 @@ watch(
                     <div class="rounded-xl bg-pink-50 p-3">
                         <p class="text-[11px] font-semibold uppercase tracking-wide text-pink-600">Ongkir</p>
                         <p class="mt-1 text-sm font-bold text-pink-950">{{ formatCurrency(selectedOrder.shipping_fee ?? 0) }}</p>
+                    </div>
+                    <div v-if="Number(selectedOrder.discount || 0) > 0" class="rounded-xl bg-rose-50 p-3">
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-rose-600">Diskon</p>
+                        <p class="mt-1 text-sm font-bold text-rose-700">- {{ formatCurrency(selectedOrder.discount) }}</p>
                     </div>
                     <div class="rounded-xl bg-pink-50 p-3">
                         <p class="text-[11px] font-semibold uppercase tracking-wide text-pink-600">Status</p>

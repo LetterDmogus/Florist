@@ -27,6 +27,7 @@ class UpdateOrderRequest extends FormRequest
             'shipping_time' => ['required', 'date_format:H:i'],
             'shipping_type' => ['required', Rule::in(['delivery', 'pickup'])],
             'shipping_fee' => ['nullable', 'numeric', 'min:0'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
             'delivery_mode' => ['nullable', Rule::in(['existing', 'new'])],
             'delivery_id' => ['nullable', 'integer', Rule::exists('deliveries', 'id')->whereNull('deleted_at')],
             'delivery_recipient_name' => ['nullable', 'string', 'max:255'],

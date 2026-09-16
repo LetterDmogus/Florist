@@ -52,6 +52,7 @@ class Order extends Model
         'shipping_time',
         'shipping_type',
         'shipping_fee',
+        'discount',
         'down_payment',
         'payment_status',
         'order_status',
@@ -64,6 +65,7 @@ class Order extends Model
         return [
             'total' => 'decimal:2',
             'shipping_fee' => 'decimal:2',
+            'discount' => 'decimal:2',
             'down_payment' => 'decimal:2',
             'shipping_date' => 'date',
             'is_hidden' => 'boolean',

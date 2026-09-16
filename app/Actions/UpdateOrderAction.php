@@ -59,7 +59,8 @@ class UpdateOrderAction
             // 5. Hitung ulang total
             $itemsTotal = collect($resolvedDetails)->sum('subtotal');
             $shippingFee = (float) ($validated['shipping_fee'] ?? 0);
-            $total = $itemsTotal + $shippingFee;
+            $discount = isset($validated['discount']) ? max(0, (float) $validated['discount']) : 0.0;
+            $total = max(0, ($itemsTotal + $shippingFee) - $discount);
             $downPayment = (float) ($validated['down_payment'] ?? 0);
 
             if ($downPayment > $itemsTotal) {
@@ -78,6 +79,7 @@ class UpdateOrderAction
                 'shipping_time' => $validated['shipping_time'],
                 'shipping_type' => $validated['shipping_type'],
                 'shipping_fee' => $shippingFee,
+                'discount' => $discount,
                 'down_payment' => $downPayment > 0 ? $downPayment : null,
                 'payment_status' => $paymentStatus,
                 'order_status' => $validated['order_status'],

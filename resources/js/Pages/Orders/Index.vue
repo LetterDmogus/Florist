@@ -93,6 +93,7 @@ const form = useForm({
     shipping_time: new Date().toTimeString().slice(0, 5),
     shipping_type: 'pickup',
     shipping_fee: 0,
+    discount: 0,
     delivery_mode: 'new',
     delivery_id: '',
     delivery_recipient_name: '',
@@ -140,7 +141,12 @@ const shippingFeeAmount = computed(() => {
     return Number.isFinite(value) && value > 0 ? value : 0;
 });
 
-const orderGrandTotal = computed(() => cartTotal.value + shippingFeeAmount.value);
+const discountAmount = computed(() => {
+    const value = Number(form.discount ?? 0);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+});
+
+const orderGrandTotal = computed(() => Math.max(0, cartTotal.value + shippingFeeAmount.value - discountAmount.value));
 
 const lineTotal = (item) => {
     const price = Number(item.unit_price || 0);
@@ -862,13 +868,20 @@ watch(deliverySearch, debounce(() => fetchDeliveryOptions(), 300));
                                 </div>
                             </div>
 
-                            <!-- Financial Inputs (Ongkir & DP) -->
+                            <!-- Financial Inputs (Ongkir, Diskon & DP) -->
                             <div class="space-y-2 border-t border-pink-100 pt-3">
                                 <div class="flex items-center justify-between gap-2">
                                     <label class="text-xs font-bold text-pink-900">Ongkos Kirim</label>
                                     <div class="relative w-32">
                                         <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-pink-400 font-bold">Rp</span>
                                         <input v-model="form.shipping_fee" type="number" class="w-full pl-7 pr-2 py-1 rounded-lg border border-pink-200 text-right text-xs font-bold focus:ring-1 focus:ring-pink-400">
+                                    </div>
+                                </div>
+                                <div class="flex items-center justify-between gap-2">
+                                    <label class="text-xs font-bold text-rose-700">Diskon (Manual)</label>
+                                    <div class="relative w-32">
+                                        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-rose-400 font-bold">Rp</span>
+                                        <input v-model="form.discount" type="number" min="0" placeholder="0" class="w-full pl-7 pr-2 py-1 rounded-lg border border-rose-200 text-right text-xs font-bold text-rose-750 focus:ring-1 focus:ring-rose-400">
                                     </div>
                                 </div>
                                 <div class="flex items-center justify-between gap-2">
@@ -887,9 +900,13 @@ watch(deliverySearch, debounce(() => fetchDeliveryOptions(), 300));
                                         <span>Subtotal Item</span>
                                         <span class="font-bold text-white">{{ formatCurrency(cartTotal) }}</span>
                                     </div>
-                                    <div class="flex justify-between text-pink-200">
+                                    <div v-if="shippingFeeAmount > 0" class="flex justify-between text-pink-200">
                                         <span>Ongkos Kirim</span>
                                         <span class="font-bold text-white">+ {{ formatCurrency(shippingFeeAmount) }}</span>
+                                    </div>
+                                    <div v-if="discountAmount > 0" class="flex justify-between text-rose-300 font-semibold">
+                                        <span>Diskon</span>
+                                        <span>- {{ formatCurrency(discountAmount) }}</span>
                                     </div>
                                     <div class="border-t border-pink-800/80 pt-2 flex justify-between items-end">
                                         <div>
