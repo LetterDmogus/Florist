@@ -31,14 +31,20 @@ class ReportController extends Controller
 
     public function salesIndex(Request $request): Response
     {
+        $type = (string) $request->string('type', 'all')->toString();
+        if (! in_array($type, ['all', 'bouquet', 'supply'], true)) {
+            $type = 'all';
+        }
+
         [$year, $month, $start, $end] = $this->resolvePeriod($request);
-        $data = $this->collectMonthlyData($start, $end);
+        $data = $this->collectMonthlyData($start, $end, $type);
 
         return Inertia::render('Reports/Sales', [
             'activeTab' => 'sales',
             'filters' => [
                 'month' => $month,
                 'year' => $year,
+                'type' => $type,
             ],
             'monthOptions' => $this->resolveMonthOptions($year),
             'yearOptions' => $this->resolveYearOptions(),
@@ -93,16 +99,27 @@ class ReportController extends Controller
 
     public function exportSales(Request $request): BinaryFileResponse|RedirectResponse
     {
-        [$year, $month, $start, $end] = $this->resolvePeriod($request);
-        $data = $this->collectMonthlyData($start, $end);
+        $type = (string) $request->string('type', 'all')->toString();
+        if (! in_array($type, ['all', 'bouquet', 'supply'], true)) {
+            $type = 'all';
+        }
 
-        $filename = sprintf('laporan-penjualan-%04d-%02d.xlsx', $year, $month);
+        [$year, $month, $start, $end] = $this->resolvePeriod($request);
+        $data = $this->collectMonthlyData($start, $end, $type);
+
+        $typeSuffix = match ($type) {
+            'bouquet' => '-bouquet',
+            'supply' => '-supply',
+            default => '',
+        };
+        $filename = sprintf('laporan-penjualan%s-%04d-%02d.xlsx', $typeSuffix, $year, $month);
         $export = new SalesReportExport(
             salesSummary: $data['salesSummary'],
             salesRows: $data['salesRows']->values()->all(),
             profitSummary: $data['profitSummary'],
             month: $month,
             year: $year,
+            type: $type,
         );
 
         if ($request->boolean('queued')) {
@@ -115,6 +132,7 @@ class ReportController extends Controller
                 ->withProperties([
                     'year' => $year,
                     'month' => $month,
+                    'type' => $type,
                     'rows' => count($data['salesRows']),
                     'filename' => $filename,
                     'path' => $path,
@@ -131,6 +149,7 @@ class ReportController extends Controller
             ->withProperties([
                 'year' => $year,
                 'month' => $month,
+                'type' => $type,
                 'rows' => count($data['salesRows']),
                 'filename' => $filename,
             ])
@@ -240,15 +259,16 @@ class ReportController extends Controller
             ->all();
     }
 
-    private function collectMonthlyData(CarbonImmutable $start, CarbonImmutable $end): array
+    private function collectMonthlyData(CarbonImmutable $start, CarbonImmutable $end, string $type = 'all'): array
     {
-        $salesRows = $this->buildSalesRows($start, $end);
+        $salesRows = $this->buildSalesRows($start, $end, $type);
         $totalReceivables = round($salesRows->sum('unpaid_amount'), 2);
         $totalDp = round($salesRows->sum('dp'), 2);
         $salesSummary = [
             'dp' => $totalDp,
             'money' => round($salesRows->sum('money'), 2),
             'fee' => round($salesRows->sum('fee'), 2),
+            'supply_sales' => round($salesRows->sum('order_supply_income'), 2),
             'discount' => round($salesRows->sum('discount'), 2),
             'gosend' => round($salesRows->sum('gosend'), 2),
             'total' => round($salesRows->sum('total'), 2),
@@ -263,7 +283,7 @@ class ReportController extends Controller
 
         $entriesByCategory = $reportEntries->groupBy('category');
 
-        $supplyIncomeTotal = $this->sumIdr($entriesByCategory->get('supply_income', collect()));
+        $manualSupplyIncomeTotal = $this->sumIdr($entriesByCategory->get('supply_income', collect()));
         $shippingRows = $this->buildGenericEntryRows($entriesByCategory->get('shipping_expense', collect()));
         $storeExpenseRows = $this->buildGenericEntryRows($entriesByCategory->get('store_expense', collect()));
         $rawMaterialRows = $this->buildGenericEntryRows($entriesByCategory->get('raw_material_expense', collect()));
@@ -288,9 +308,17 @@ class ReportController extends Controller
         $refundIdrTotal = round($refundRows->sum('idr'), 2);
         $refundRmbTotal = round($refundRows->sum('rmb'), 2);
 
+        // Bouquet income adalah total fee buket dari order
+        $orderBouquetFee = round($salesRows->sum('bouquet_fee'), 2);
+        // Supply income adalah total penjualan supply dari order + entri manual supply_income
+        $orderSupplySales = round($salesRows->sum('order_supply_income'), 2);
+        $totalSupplyIncome = round($manualSupplyIncomeTotal + $orderSupplySales, 2);
+
         $profitSummary = [
-            'florist_income' => round($salesSummary['fee'], 2),
-            'supply_income' => round($supplyIncomeTotal, 2),
+            'florist_income' => $orderBouquetFee,
+            'supply_income' => $totalSupplyIncome,
+            'order_supply_income' => $orderSupplySales,
+            'manual_supply_income' => round($manualSupplyIncomeTotal, 2),
             'purchase_total' => round($purchaseTotal + $supplyPurchaseTotal, 2), // Total all supply purchases
             'store_expense_total' => round($storeExpenseTotal, 2),
             'raw_material_expense_total' => round($rawMaterialExpenseTotal, 2),
@@ -334,7 +362,7 @@ class ReportController extends Controller
         ];
     }
 
-    private function buildSalesRows(CarbonImmutable $start, CarbonImmutable $end): Collection
+    private function buildSalesRows(CarbonImmutable $start, CarbonImmutable $end, string $type = 'all'): Collection
     {
         $orders = Order::query()
             ->with([
@@ -350,16 +378,42 @@ class ReportController extends Controller
             ->orderBy('id')
             ->get();
 
+        // Filter orders berdasarkan item_type yang terkandung jika type !== 'all'
+        if ($type === 'bouquet') {
+            $orders = $orders->filter(function (Order $order): bool {
+                if ($order->order_type === 'custom' || $order->order_type === 'catalog') {
+                    return true;
+                }
+                return $order->orderDetails->contains(fn ($detail) => $detail->item_type === 'bouquet');
+            });
+        } elseif ($type === 'supply') {
+            $orders = $orders->filter(function (Order $order): bool {
+                if ($order->order_type === 'inventory') {
+                    return true;
+                }
+                return $order->orderDetails->contains(fn ($detail) => $detail->item_type === 'inventory_item');
+            });
+        }
+
         return $orders->values()->map(function (Order $order, int $index): array {
             $money = 0.0;
             $itemsSummary = [];
             $orderDetails = [];
+            $bouquetSubtotal = 0.0;
+            $supplySubtotal = 0.0;
 
             foreach ($order->orderDetails as $detail) {
                 $model = $this->resolveModelLabel($detail);
                 $isMoneyBouquet = $this->isMoneyBouquet($detail, $model);
                 $detailMoney = $isMoneyBouquet ? (float) ($detail->money_bouquet ?? 0) : 0.0;
                 $money += $detailMoney;
+                $subtotal = (float) ($detail->subtotal ?? 0);
+
+                if ($detail->item_type === 'bouquet') {
+                    $bouquetSubtotal += $subtotal;
+                } else {
+                    $supplySubtotal += $subtotal;
+                }
 
                 $itemsSummary[] = $detail->quantity > 1
                     ? "{$model} (x{$detail->quantity})"
@@ -371,7 +425,7 @@ class ReportController extends Controller
                     'item_type' => $detail->item_type,
                     'quantity' => (int) $detail->quantity,
                     'unit_price' => (float) ($detail->unit_price ?? 0),
-                    'subtotal' => (float) ($detail->subtotal ?? 0),
+                    'subtotal' => $subtotal,
                     'money_bouquet' => (float) ($detail->money_bouquet ?? 0),
                     'sender_name' => $detail->sender_name,
                     'greeting_card' => $detail->greeting_card,
@@ -386,6 +440,19 @@ class ReportController extends Controller
             $discount = (float) ($order->discount ?? 0);
             $dpAmount = (float) ($order->down_payment ?? 0);
             $orderTotal = (float) ($order->total ?? 0);
+
+            // Perhitungan proporsi diskon jika order memiliki item buket & supply
+            $itemsGrossSubtotal = $bouquetSubtotal + $supplySubtotal;
+            if ($itemsGrossSubtotal > 0 && $discount > 0) {
+                $bouquetDiscount = ($bouquetSubtotal / $itemsGrossSubtotal) * $discount;
+                $supplyDiscount = ($supplySubtotal / $itemsGrossSubtotal) * $discount;
+            } else {
+                $bouquetDiscount = 0.0;
+                $supplyDiscount = 0.0;
+            }
+
+            $orderBouquetFee = max(0, $bouquetSubtotal - $bouquetDiscount - $money);
+            $orderSupplyIncome = max(0, $supplySubtotal - $supplyDiscount);
 
             // Fee dihitung sebagai subtotal order dikurangi money bouquet
             // Dimana orderTotal = (sum(subtotals) - discount) + gosend
@@ -402,6 +469,7 @@ class ReportController extends Controller
             return [
                 'no' => $index + 1,
                 'order_id' => $order->id,
+                'order_type' => $order->order_type ?? 'custom',
                 'date' => $order->shipping_date?->format('Y-m-d'),
                 'time' => $order->shipping_time ? substr((string) $order->shipping_time, 0, 5) : null,
                 'customer_name' => $order->customer?->name ?? '-',
@@ -409,6 +477,8 @@ class ReportController extends Controller
                 'model' => $modelString,
                 'money' => round($money, 2),
                 'fee' => round($fee, 2),
+                'bouquet_fee' => round($orderBouquetFee, 2),
+                'order_supply_income' => round($orderSupplyIncome, 2),
                 'discount' => round($discount, 2),
                 'gosend' => round($gosend, 2),
                 'total' => round($orderTotal, 2),

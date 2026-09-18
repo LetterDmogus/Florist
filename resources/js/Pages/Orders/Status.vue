@@ -214,6 +214,23 @@ const formatShippingTime = (value) => {
     return `${hour}:${minute}`;
 };
 
+const formatDateTime = (value) => {
+    if (!value) return '-';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    const dateStr = new Intl.DateTimeFormat('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    }).format(parsed);
+    const timeStr = new Intl.DateTimeFormat('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).format(parsed);
+    return `${dateStr} ${timeStr}`;
+};
+
 const ordersList = computed(() => {
     return props.orders?.data ?? [];
 });
@@ -363,11 +380,11 @@ const setDateToday = () => {
     applyDateFilter(today, '');
 };
 
-const setDateTomorrow = () => {
+const setDateYesterday = () => {
     const d = new Date();
-    d.setDate(d.getDate() + 1);
-    const tomorrow = formatLocalDate(d);
-    applyDateFilter(tomorrow, '');
+    d.setDate(d.getDate() - 1);
+    const yesterday = formatLocalDate(d);
+    applyDateFilter(yesterday, '');
 };
 
 const resetFilter = () => {
@@ -699,10 +716,10 @@ watch(
                             <button
                                 type="button"
                                 class="px-2.5 py-1 text-xs font-semibold rounded-lg transition"
-                                :class="selectedDate === formatLocalDate(new Date(Date.now() + 86400000)) && !selectedDateTo ? 'bg-pink-600 text-white shadow-2xs' : 'text-pink-700 hover:bg-pink-100/60'"
-                                @click="setDateTomorrow"
+                                :class="selectedDate === formatLocalDate(new Date(Date.now() - 86400000)) && !selectedDateTo ? 'bg-pink-600 text-white shadow-2xs' : 'text-pink-700 hover:bg-pink-100/60'"
+                                @click="setDateYesterday"
                             >
-                                Besok
+                                Kemarin
                             </button>
                         </div>
                     </div>
@@ -1027,6 +1044,14 @@ watch(
                                         <ArrowUpDown v-else class="w-3 h-3 opacity-20" />
                                     </div>
                                 </th>
+                                <th class="px-3 py-2 cursor-pointer select-none hover:text-pink-800" @click="handleSort('created_at')">
+                                    <div class="flex items-center gap-1">
+                                        Tanggal Dibuat
+                                        <ChevronUp v-if="sortBy === 'created_at' && sortDir === 'asc'" class="w-3 h-3" />
+                                        <ChevronDown v-else-if="sortBy === 'created_at' && sortDir === 'desc'" class="w-3 h-3" />
+                                        <ArrowUpDown v-else class="w-3 h-3 opacity-20" />
+                                    </div>
+                                </th>
                                 <th class="px-3 py-2">Tipe</th>
                                 <th class="px-3 py-2 cursor-pointer select-none hover:text-pink-800" @click="handleSort('total')">
                                     <div class="flex items-center gap-1">
@@ -1050,6 +1075,7 @@ watch(
                                     <span class="block text-[11px] text-pink-700/70 font-normal">{{ order.customer?.phone_number ?? '' }}</span>
                                 </td>
                                 <td class="px-3 py-2 text-pink-800 text-xs">{{ formatShippingDate(order.shipping_date) }} {{ formatShippingTime(order.shipping_time) }}</td>
+                                <td class="px-3 py-2 text-pink-800 text-xs whitespace-nowrap">{{ formatDateTime(order.created_at) }}</td>
                                 <td class="px-3 py-2 text-xs">
                                     <div class="flex items-center gap-1">
                                         <span
@@ -1138,7 +1164,7 @@ watch(
                                 </td>
                             </tr>
                             <tr v-if="ordersList.length === 0">
-                                <td colspan="9" class="px-3 py-6 text-center text-sm text-pink-700">Belum ada order.</td>
+                                <td colspan="10" class="px-3 py-6 text-center text-sm text-pink-700">Belum ada order.</td>
                             </tr>
                         </tbody>
                     </table>

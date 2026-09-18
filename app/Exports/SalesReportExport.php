@@ -40,6 +40,7 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         private readonly array $profitSummary,
         private readonly int $month,
         private readonly int $year,
+        private readonly string $type = 'all',
     ) {
         // Generate data dan hitung posisi baris langsung di Constructor!
         // Ini menjamin posisi baris sudah 100% siap sebelum styles() atau array() dipanggil.
@@ -52,6 +53,11 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
     private function buildExportData(): void
     {
         $monthLabel = CarbonImmutable::create($this->year, $this->month, 1)->translatedFormat('F');
+        $typeLabel = match ($this->type) {
+            'bouquet' => ' (BOUQUET ONLY)',
+            'supply' => ' (SUPPLY ONLY)',
+            default => '',
+        };
         $rows = [];
 
         // Helper untuk memasukkan baris sekaligus mendapatkan nomor baris Excel (1-based)
@@ -62,7 +68,7 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
 
         // 1. JUDUL LAPORAN (Row 1 - 2)
         $appendRow(['BEES FLEUR FLORIST']);
-        $appendRow(["LAPORAN PENJUALAN - {$monthLabel} {$this->year}"]);
+        $appendRow(["LAPORAN PENJUALAN{$typeLabel} - {$monthLabel} {$this->year}"]);
         $appendRow(['']); // Row 3 (Pemisah kosong)
 
         // 2. SUMMARY PENJUALAN (Row 4 s/d 11)

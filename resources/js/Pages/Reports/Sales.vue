@@ -39,6 +39,7 @@ const props = defineProps({
 
 const selectedMonth = ref(props.filters.month);
 const selectedYear = ref(props.filters.year);
+const selectedType = ref(props.filters.type || 'all');
 
 const selectedOrder = ref(null);
 const showDetailModal = ref(false);
@@ -56,6 +57,7 @@ const closeOrderDetail = () => {
 const exportUrl = computed(() => route('reports.sales.export', {
     month: selectedMonth.value,
     year: selectedYear.value,
+    type: selectedType.value,
 }));
 
 const monthLabel = computed(() => {
@@ -63,10 +65,11 @@ const monthLabel = computed(() => {
     return found?.label || selectedMonth.value;
 });
 
-watch([selectedMonth, selectedYear], () => {
+watch([selectedMonth, selectedYear, selectedType], () => {
     router.get(route('reports.sales.index'), {
         month: selectedMonth.value,
         year: selectedYear.value,
+        type: selectedType.value,
     }, {
         preserveScroll: true,
         preserveState: true,
@@ -92,8 +95,16 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', {
                 </h2>
                 <div class="flex items-center gap-2">
                     <select
+                        v-model="selectedType"
+                        class="rounded-xl border-secondary focus:border-primary focus:ring-primary/40 text-sm font-medium"
+                    >
+                        <option value="all">Semua Kategori</option>
+                        <option value="bouquet">Bouquet Only</option>
+                        <option value="supply">Supply Only</option>
+                    </select>
+                    <select
                         v-model="selectedMonth"
-                        class="rounded-xl border-secondary focus:border-primary focus:ring-primary/40"
+                        class="rounded-xl border-secondary focus:border-primary focus:ring-primary/40 text-sm"
                     >
                         <option v-for="month in monthOptions" :key="month.value" :value="month.value">
                             {{ month.label }}
@@ -101,7 +112,7 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', {
                     </select>
                     <select
                         v-model="selectedYear"
-                        class="rounded-xl border-secondary focus:border-primary focus:ring-primary/40"
+                        class="rounded-xl border-secondary focus:border-primary focus:ring-primary/40 text-sm"
                     >
                         <option v-for="year in yearOptions" :key="year" :value="year">
                             {{ year }}
@@ -109,7 +120,7 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', {
                     </select>
                     <a
                         :href="exportUrl"
-                        class="inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition"
+                        class="inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition shadow-xs"
                     >
                         Export Excel
                     </a>
@@ -435,9 +446,13 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', {
                         <span>Total Uang Buket (Money):</span>
                         <span class="font-medium text-gray-900">{{ formatCurrency(selectedOrder.money) }}</span>
                     </div>
-                    <div v-if="selectedOrder.fee > 0" class="flex justify-between text-gray-600">
+                    <div v-if="selectedOrder.bouquet_fee > 0" class="flex justify-between text-gray-600">
                         <span>Jasa & Bunga (Fee Florist):</span>
-                        <span class="font-medium text-gray-900">{{ formatCurrency(selectedOrder.fee) }}</span>
+                        <span class="font-medium text-gray-900">{{ formatCurrency(selectedOrder.bouquet_fee) }}</span>
+                    </div>
+                    <div v-if="selectedOrder.order_supply_income > 0" class="flex justify-between text-blue-700">
+                        <span>Pendapatan Supply:</span>
+                        <span class="font-medium text-blue-900">{{ formatCurrency(selectedOrder.order_supply_income) }}</span>
                     </div>
                     <div v-if="selectedOrder.discount > 0" class="flex justify-between text-rose-700 font-medium">
                         <span>Diskon Khusus:</span>
