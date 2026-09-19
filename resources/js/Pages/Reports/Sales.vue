@@ -228,8 +228,24 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', {
                                         <div v-if="row.time" class="text-xs text-muted-foreground">{{ row.time }}</div>
                                     </td>
                                     <td class="px-3 py-2">
-                                        <div class="font-semibold text-pink-950">{{ row.customer_name }}</div>
-                                        <div class="text-xs text-muted-foreground line-clamp-1">{{ row.model }}</div>
+                                        <div class="flex items-center gap-1.5 mb-0.5">
+                                            <span class="font-semibold text-pink-950">{{ row.customer_name }}</span>
+                                            <span
+                                                v-if="row.type_label"
+                                                class="inline-block px-1.5 py-0.2 rounded text-[10px] font-medium"
+                                                :class="row.type_label === 'Supply' 
+                                                    ? 'bg-amber-100 text-amber-800 border border-amber-200' 
+                                                    : (row.type_label.includes('&') 
+                                                        ? 'bg-purple-100 text-purple-800 border border-purple-200' 
+                                                        : 'bg-pink-100 text-pink-700 border border-pink-200')"
+                                            >
+                                                {{ row.type_label }}
+                                            </span>
+                                        </div>
+                                        <div class="text-xs text-muted-foreground line-clamp-1">
+                                            <span v-if="row.item_codes && row.item_codes !== '-'" class="font-mono text-pink-700 font-medium mr-1">[{{ row.item_codes }}]</span>
+                                            <span>{{ row.model }}</span>
+                                        </div>
                                     </td>
                                     <td class="px-3 py-2 text-center">
                                         <span
@@ -404,6 +420,7 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', {
                         <table class="min-w-full text-xs divide-y divide-pink-100">
                             <thead class="bg-pink-50/70 text-pink-900">
                                 <tr>
+                                    <th class="px-3 py-2 text-left">Kode</th>
                                     <th class="px-3 py-2 text-left">Item / Keterangan</th>
                                     <th class="px-3 py-2 text-center">Qty</th>
                                     <th class="px-3 py-2 text-right">Harga Satuan</th>
@@ -412,6 +429,9 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', {
                             </thead>
                             <tbody class="divide-y divide-pink-50 text-gray-800">
                                 <tr v-for="item in selectedOrder.items" :key="`item-${item.id}`">
+                                    <td class="px-3 py-2 font-mono text-pink-700 font-medium whitespace-nowrap">
+                                        {{ item.item_code && item.item_code !== '-' ? item.item_code : '-' }}
+                                    </td>
                                     <td class="px-3 py-2">
                                         <div class="font-semibold text-pink-950">{{ item.item_name }}</div>
                                         <div v-if="item.sender_name" class="text-[11px] text-muted-foreground">
@@ -429,7 +449,7 @@ const formatCurrency = (value) => new Intl.NumberFormat('id-ID', {
                                     <td class="px-3 py-2 text-right font-semibold">{{ formatCurrency(item.subtotal) }}</td>
                                 </tr>
                                 <tr v-if="!selectedOrder.items || selectedOrder.items.length === 0">
-                                    <td colspan="4" class="px-3 py-4 text-center text-muted-foreground">Tidak ada detail item.</td>
+                                    <td colspan="5" class="px-3 py-4 text-center text-muted-foreground">Tidak ada detail item.</td>
                                 </tr>
                             </tbody>
                         </table>

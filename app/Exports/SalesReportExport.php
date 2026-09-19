@@ -84,12 +84,27 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         $appendRow(['']); // Pemisah kosong
 
         // 3. TABEL DATA TRANSAKSI
-        $this->tableHeaderRow = $appendRow(['No', 'Tanggal', 'Model Bouquet / Item', 'Status', 'DP Diterima', 'Belum Dibayar', 'Money', 'Fee', 'Diskon', 'Gosend', 'Total']);
+        $this->tableHeaderRow = $appendRow([
+            'No',
+            'Tanggal',
+            'Customer',
+            'Kode Item',
+            'Tipe',
+            'Model Bouquet / Item',
+            'Status',
+            'DP Diterima',
+            'Belum Dibayar',
+            'Money',
+            'Fee',
+            'Diskon',
+            'Gosend',
+            'Total',
+        ]);
         $this->dataStartRow = $this->tableHeaderRow + 1;
         $this->unpaidDataRows = [];
 
         if (empty($this->salesRows)) {
-            $appendRow(['-', '-', 'Tidak ada data penjualan pada periode ini', '-', 0, 0, 0, 0, 0, 0, 0]);
+            $appendRow(['-', '-', '-', '-', '-', 'Tidak ada data penjualan pada periode ini', '-', 0, 0, 0, 0, 0, 0, 0]);
         } else {
             foreach ($this->salesRows as $item) {
                 $isUnpaid = !empty($item['is_unpaid']) || in_array($item['payment_status'] ?? '', ['dp', 'unpaid'], true);
@@ -102,6 +117,9 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
                 $rowNum = $appendRow([
                     (int) ($item['no'] ?? 0),
                     (string) ($item['date'] ?? ''),
+                    (string) ($item['customer_name'] ?? '-'),
+                    (string) ($item['item_codes'] ?? '-'),
+                    (string) ($item['type_label'] ?? 'Bouquet'),
                     (string) ($item['model'] ?? ''),
                     $statusLabel,
                     (float) ($item['dp'] ?? 0),
@@ -123,6 +141,9 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         // 4. BARIS TOTAL TABEL DATA
         $this->tableTotalRow = $appendRow([
             'TOTAL',
+            '',
+            '',
+            '',
             '',
             '',
             '',
@@ -164,11 +185,11 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
     public function styles(Worksheet $sheet): array
     {
         // 1. Judul Utama (Row 1-2)
-        $sheet->mergeCells('A1:K1');
-        $sheet->mergeCells('A2:K2');
-        $sheet->getStyle('A1:K2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle('A1:K1')->getFont()->setBold(true)->setSize(16)->getColor()->setRGB('9D174D');
-        $sheet->getStyle('A2:K2')->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('374151');
+        $sheet->mergeCells('A1:N1');
+        $sheet->mergeCells('A2:N2');
+        $sheet->getStyle('A1:N2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A1:N1')->getFont()->setBold(true)->setSize(16)->getColor()->setRGB('9D174D');
+        $sheet->getStyle('A2:N2')->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('374151');
 
         // 2. Kotak Summary Penjualan (Row 4 s/d 11)
         $sheet->getStyle("B{$this->summaryStartRow}")->getFont()->setBold(true)->getColor()->setRGB('9D174D');
@@ -178,7 +199,7 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         $sheet->getStyle("C" . ($this->summaryStartRow + 1) . ":C{$this->summaryEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
         // 3. Header Tabel Data (Row tableHeaderRow)
-        $headerRange = "A{$this->tableHeaderRow}:K{$this->tableHeaderRow}";
+        $headerRange = "A{$this->tableHeaderRow}:N{$this->tableHeaderRow}";
         $sheet->getStyle($headerRange)->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'DB2777']],
@@ -189,35 +210,37 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         for ($r = $this->dataStartRow; $r <= $this->dataEndRow; $r++) {
             // Zebra striping untuk baris genap
             if ($r % 2 === 0) {
-                $sheet->getStyle("A{$r}:K{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFF1F7');
+                $sheet->getStyle("A{$r}:N{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFF1F7');
             }
 
             // Alignment standar kolom
             $sheet->getStyle("A{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle("B{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle("D{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("E{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("G{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         }
 
         // Highlight merah lembut untuk baris yang belum lunas / DP
         foreach ($this->unpaidDataRows as $r) {
-            $sheet->getStyle("A{$r}:K{$r}")->applyFromArray([
+            $sheet->getStyle("A{$r}:N{$r}")->applyFromArray([
                 'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFE4E6']], // Soft Rose
                 'font' => ['color' => ['rgb' => '9F1239'], 'bold' => true],
             ]);
         }
 
         // 5. Baris Total Tabel Data
-        $sheet->mergeCells("A{$this->tableTotalRow}:D{$this->tableTotalRow}");
-        $sheet->getStyle("A{$this->tableTotalRow}:K{$this->tableTotalRow}")->applyFromArray([
+        $sheet->mergeCells("A{$this->tableTotalRow}:G{$this->tableTotalRow}");
+        $sheet->getStyle("A{$this->tableTotalRow}:N{$this->tableTotalRow}")->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => '831843']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FCE7F3']],
         ]);
         $sheet->getStyle("A{$this->tableTotalRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
         // Border seluruh tabel data (Header s/d Total)
-        $tableRange = "A{$this->tableHeaderRow}:K{$this->tableTotalRow}";
+        $tableRange = "A{$this->tableHeaderRow}:N{$this->tableTotalRow}";
         $sheet->getStyle($tableRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('F472B6');
-        $sheet->getStyle("A{$this->tableTotalRow}:K{$this->tableTotalRow}")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setRGB('DB2777');
+        $sheet->getStyle("A{$this->tableTotalRow}:N{$this->tableTotalRow}")->getBorders()->getTop()->setBorderStyle(Border::BORDER_MEDIUM)->getColor()->setRGB('DB2777');
 
         // 6. Ringkasan Laba
         $sheet->getStyle("B{$this->profitTitleRow}")->getFont()->setBold(true)->setSize(11)->getColor()->setRGB('9D174D');
@@ -237,13 +260,14 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
     {
         return [
             'B' => '@',
-            'E' => '#,##0',
-            'F' => '#,##0',
-            'G' => '#,##0',
+            'D' => '@',
             'H' => '#,##0',
             'I' => '#,##0',
             'J' => '#,##0',
             'K' => '#,##0',
+            'L' => '#,##0',
+            'M' => '#,##0',
+            'N' => '#,##0',
         ];
     }
 
@@ -252,15 +276,18 @@ class SalesReportExport implements FromArray, WithColumnFormatting, WithColumnWi
         return [
             'A' => 6,   // No
             'B' => 14,  // Tanggal
-            'C' => 45,  // Model Bouquet / Item
-            'D' => 14,  // Status (DP / Belum Lunas / Lunas)
-            'E' => 16,  // DP Diterima
-            'F' => 16,  // Belum Dibayar
-            'G' => 14,  // Money
-            'H' => 14,  // Fee
-            'I' => 14,  // Diskon
-            'J' => 14,  // Gosend
-            'K' => 16,  // Total
+            'C' => 24,  // Customer
+            'D' => 18,  // Kode Item
+            'E' => 16,  // Tipe
+            'F' => 45,  // Model Bouquet / Item
+            'G' => 14,  // Status (DP / Belum Lunas / Lunas)
+            'H' => 16,  // DP Diterima
+            'I' => 16,  // Belum Dibayar
+            'J' => 14,  // Money
+            'K' => 14,  // Fee
+            'L' => 14,  // Diskon
+            'M' => 14,  // Gosend
+            'N' => 16,  // Total
         ];
     }
 

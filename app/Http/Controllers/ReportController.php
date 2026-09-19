@@ -368,8 +368,9 @@ class ReportController extends Controller
             ->with([
                 'customer:id,name,phone',
                 'delivery',
+                'orderDetails.bouquetUnit:id,type_id,serial_number,name',
                 'orderDetails.bouquetUnit.type:id,name',
-                'orderDetails.inventoryItem:id,name',
+                'orderDetails.inventoryItem:id,serial_number,name',
             ])
             ->whereNull('deleted_at')
             ->whereBetween('shipping_date', [$start->toDateString(), $end->toDateString()])
@@ -399,8 +400,11 @@ class ReportController extends Controller
             $money = 0.0;
             $itemsSummary = [];
             $orderDetails = [];
+            $itemCodes = [];
             $bouquetSubtotal = 0.0;
             $supplySubtotal = 0.0;
+            $hasBouquet = false;
+            $hasSupply = false;
 
             foreach ($order->orderDetails as $detail) {
                 $model = $this->resolveModelLabel($detail);
@@ -409,10 +413,20 @@ class ReportController extends Controller
                 $money += $detailMoney;
                 $subtotal = (float) ($detail->subtotal ?? 0);
 
+                $itemCode = $detail->item_type === 'bouquet'
+                    ? ($detail->bouquetUnit?->serial_number)
+                    : ($detail->inventoryItem?->serial_number);
+
+                if (!empty($itemCode)) {
+                    $itemCodes[] = $itemCode;
+                }
+
                 if ($detail->item_type === 'bouquet') {
                     $bouquetSubtotal += $subtotal;
+                    $hasBouquet = true;
                 } else {
                     $supplySubtotal += $subtotal;
+                    $hasSupply = true;
                 }
 
                 $itemsSummary[] = $detail->quantity > 1
@@ -421,6 +435,7 @@ class ReportController extends Controller
 
                 $orderDetails[] = [
                     'id' => $detail->id,
+                    'item_code' => $itemCode ?? '-',
                     'item_name' => $model,
                     'item_type' => $detail->item_type,
                     'quantity' => (int) $detail->quantity,
@@ -435,6 +450,25 @@ class ReportController extends Controller
             $modelString = empty($itemsSummary)
                 ? 'Order #' . $order->id
                 : implode(', ', $itemsSummary);
+
+            $itemCodesString = empty($itemCodes)
+                ? '-'
+                : implode(', ', array_unique($itemCodes));
+
+            // Menentukan tipe order (Bouquet, Supply, atau Bouquet & Supply)
+            if ($hasBouquet && $hasSupply) {
+                $typeLabel = 'Bouquet & Supply';
+            } elseif ($hasBouquet) {
+                $typeLabel = 'Bouquet';
+            } elseif ($hasSupply) {
+                $typeLabel = 'Supply';
+            } else {
+                $typeLabel = match ($order->order_type) {
+                    'inventory' => 'Supply',
+                    'custom', 'catalog' => 'Bouquet',
+                    default => 'Bouquet',
+                };
+            }
 
             $gosend = (float) ($order->shipping_fee ?? 0);
             $discount = (float) ($order->discount ?? 0);
@@ -470,6 +504,8 @@ class ReportController extends Controller
                 'no' => $index + 1,
                 'order_id' => $order->id,
                 'order_type' => $order->order_type ?? 'custom',
+                'type_label' => $typeLabel,
+                'item_codes' => $itemCodesString,
                 'date' => $order->shipping_date?->format('Y-m-d'),
                 'time' => $order->shipping_time ? substr((string) $order->shipping_time, 0, 5) : null,
                 'customer_name' => $order->customer?->name ?? '-',
